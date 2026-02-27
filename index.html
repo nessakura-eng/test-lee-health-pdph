@@ -684,17 +684,38 @@ header {
     
     // ── MAP INIT ──────────────────────────────────────────────────────────────────
     function initMap() {
-      map = L.map("map", {center:[26.52,-81.95], zoom:10, zoomControl:false, attributionControl:false});
-      L.control.zoom({position:"topleft"}).addTo(map);
-      L.control.scale({position:"bottomleft", imperial:true, metric:false}).addTo(map);
-      tileLayer = L.tileLayer(TILES.dark, {maxZoom:19}).addTo(map);
-      map.on("zoomend moveend", function() {
-        if (activeLayer === "kriging") { renderKriging(); }
+      map = L.map('map').setView([26.56, -81.85], 10);
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Esri'
+      }).addTo(map);
+  
+      ML_DATA.zips.forEach(z => {
+        L.circle([z.lat, z.lng], {
+          radius: 2500, color: '#444', weight: 1, 
+          fillColor: z.risk_score > 0.5 ? '#a80000' : '#bed2ff', fillOpacity: 0.4
+        }).addTo(map).bindPopup(`ZIP ${z.zip}: ${z.name}`);
       });
-      buildHitMarkers();
-      renderAllLayers();
-      buildMapLegend();
     }
+  
+    function updateUI() {
+      const yr = document.getElementById("yrSlider").value;
+      const idx = ML_DATA.arima.forecast_years.indexOf(parseInt(yr));
+      if (idx !== -1) {
+        document.getElementById("sAamr").innerText = ML_DATA.arima.forecast_aamr[idx].toFixed(1);
+        document.getElementById("sCases").innerText = (ML_DATA.arima.forecast_aamr[idx] * 8.5).toFixed(0);
+        document.getElementById("mlStatusText").innerText = "Forecast Engine Live: " + yr;
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      initMap();
+      document.getElementById("yrSlider").addEventListener("input", (e) => {
+        document.getElementById("slYr").innerText = e.target.value;
+        document.getElementById("hdrYear").innerText = e.target.value;
+        updateUI();
+      });
+      updateUI();
+    });
     
     // ── CONTROLS ──────────────────────────────────────────────────────────────────
     function initControls() {
