@@ -1,0 +1,1071 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Lee County PD Forecast — ML Enhanced</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+:root{
+  --bg:#07090f;--panel:#0d1219;--panel2:#111922;--border:#182030;
+  --accent:#e05a2b;--cool:#26c6c6;--text:#d8e4f0;--muted:#4e6580;
+  --crit:#c0392b;--high:#d4691e;--mod:#2471a3;--low:#1e8449;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{height:100%;overflow:hidden;}
+body{font-family:"Outfit",sans-serif;background:var(--bg);color:var(--text);display:flex;flex-direction:column;}
+header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:9px 18px;background:var(--panel);border-bottom:1px solid var(--border);
+  height:54px;flex-shrink:0;z-index:1000;
+}
+.hdr-left{display:flex;align-items:center;gap:12px;}
+.orb{width:28px;height:28px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#f0a33a,#c0392b 70%);
+  box-shadow:0 0 14px rgba(224,90,43,.65);animation:pulse 3s ease-in-out infinite;flex-shrink:0;}
+@keyframes pulse{0%,100%{box-shadow:0 0 14px rgba(224,90,43,.5)}50%{box-shadow:0 0 26px rgba(224,90,43,.95)}}
+.hdr-title{font-family:"DM Serif Display",serif;font-size:.95rem;line-height:1.2;}
+.hdr-sub{font-family:"DM Mono",monospace;font-size:.55rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-top:1px;}
+.hdr-right{display:flex;align-items:center;gap:12px;}
+.ml-badge{font-family:"DM Mono",monospace;font-size:.58rem;background:rgba(38,198,198,.1);border:1px solid rgba(38,198,198,.3);color:var(--cool);padding:3px 8px;border-radius:3px;}
+.yr-disp{text-align:right;}
+.yr-lbl{font-size:.52rem;color:var(--muted);margin-bottom:1px;}
+.yr-val{font-family:"DM Mono",monospace;font-size:1.8rem;font-weight:500;color:var(--accent);line-height:1;}
+.app{
+  display:grid;grid-template-columns:272px 1fr 264px;grid-template-rows:1fr 34px;
+  flex:1;min-height:0;overflow:hidden;
+}
+.lpanel,.rpanel{
+  overflow-y:auto;overflow-x:hidden;padding:10px 9px;
+  display:flex;flex-direction:column;gap:9px;background:var(--panel);
+  min-height:0;height:100%;
+}
+.lpanel{border-right:1px solid var(--border);}
+.rpanel{border-left:1px solid var(--border);}
+.lpanel::-webkit-scrollbar,.rpanel::-webkit-scrollbar{width:3px;}
+.lpanel::-webkit-scrollbar-thumb,.rpanel::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+.lpanel::-webkit-scrollbar-thumb:hover,.rpanel::-webkit-scrollbar-thumb:hover{background:var(--muted);}
+.mapwrap{position:relative;overflow:hidden;min-height:0;}
+#map{width:100%;height:100%;}
+.bbar{
+  grid-column:1/-1;background:var(--panel);border-top:1px solid var(--border);
+  padding:0 14px;display:flex;align-items:center;justify-content:space-between;
+  font-family:"DM Mono",monospace;font-size:.51rem;color:var(--muted);min-height:34px;
+}
+.sec{background:var(--panel2);border:1px solid var(--border);border-radius:6px;overflow:visible;flex-shrink:0;}
+.sec-h{
+  padding:6px 10px;background:rgba(24,32,48,.85);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;border-radius:6px 6px 0 0;
+}
+.sec-h h3{font-size:.59rem;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);}
+.sec-h span{font-family:"DM Mono",monospace;font-size:.55rem;color:var(--muted);}
+.sec-b{padding:9px 10px;}
+.slider-wrap{padding:4px 0 10px;}
+.yr-slider{-webkit-appearance:none;width:100%;height:3px;border-radius:2px;
+  background:linear-gradient(to right,var(--accent) 0%,var(--border) 0%);outline:none;cursor:pointer;}
+.yr-slider::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;
+  background:var(--accent);box-shadow:0 0 8px rgba(224,90,43,.8);cursor:pointer;}
+.yr-lbs{display:flex;justify-content:space-between;margin-top:5px;
+  font-family:"DM Mono",monospace;font-size:.53rem;color:var(--muted);}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+.sc{background:var(--panel);border:1px solid var(--border);border-radius:5px;padding:8px 6px;text-align:center;}
+.sv{font-family:"DM Mono",monospace;font-size:1rem;color:var(--accent);display:block;line-height:1;}
+.sl{font-size:.52rem;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.05em;}
+.btn-row{display:flex;gap:4px;flex-wrap:wrap;}
+.tb{padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:transparent;
+  color:var(--muted);font-family:"Outfit",sans-serif;font-size:.62rem;cursor:pointer;transition:all .15s;}
+.tb:hover,.tb.on{border-color:var(--accent);color:var(--accent);background:rgba(224,90,43,.1);}
+.tb.on{font-weight:600;}
+.legend-bar{height:9px;border-radius:5px;background:linear-gradient(to right,#1e8449,#2471a3,#d4691e,#c0392b,#7b1010);margin:7px 0 3px;}
+.legend-lbs{display:flex;justify-content:space-between;font-family:"DM Mono",monospace;font-size:.51rem;color:var(--muted);}
+.age-bars{display:flex;flex-direction:column;gap:5px;}
+.ab-row{display:flex;align-items:center;gap:5px;}
+.ab-lbl{font-family:"DM Mono",monospace;font-size:.56rem;color:var(--muted);width:38px;flex-shrink:0;}
+.ab-track{flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden;}
+.ab-fill{height:100%;border-radius:2px;transition:width .65s cubic-bezier(.4,0,.2,1);}
+.ab-cnt{font-family:"DM Mono",monospace;font-size:.54rem;color:var(--text);width:38px;text-align:right;flex-shrink:0;}
+.map-ctrls{position:absolute;top:9px;right:9px;z-index:900;display:flex;flex-direction:column;gap:4px;}
+.mc{background:rgba(13,18,25,.92);border:1px solid var(--border);border-radius:4px;
+  padding:5px 10px;color:var(--text);font-family:"Outfit",sans-serif;font-size:.62rem;
+  cursor:pointer;backdrop-filter:blur(6px);transition:all .15s;}
+.mc:hover,.mc.on{border-color:var(--accent);color:var(--accent);}
+.map-footer{
+  position:absolute;bottom:9px;left:50%;transform:translateX(-50%);z-index:900;
+  background:rgba(13,18,25,.94);border:1px solid var(--border);border-radius:5px;
+  padding:5px 12px;font-size:.64rem;pointer-events:none;backdrop-filter:blur(6px);
+  white-space:nowrap;text-align:center;max-width:92%;
+}
+.ir{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(24,32,48,.8);font-size:.63rem;}
+.ir:last-child{border-bottom:none;}
+.ir span:first-child{color:var(--muted);}
+.ir span:last-child{font-family:"DM Mono",monospace;}
+.hl{color:var(--accent)!important;font-weight:600;}
+.up{color:#e74c3c;}
+.ch-wrap{position:relative;height:135px;}
+.ch-wrap-lg{position:relative;height:158px;}
+.zlist{display:flex;flex-direction:column;gap:3px;}
+.zi{display:flex;align-items:center;justify-content:space-between;padding:5px 6px;
+  border-radius:4px;cursor:pointer;border:1px solid transparent;transition:all .15s;font-size:.63rem;}
+.zi:hover,.zi.sel{background:rgba(224,90,43,.08);border-color:rgba(224,90,43,.25);}
+.zdot{width:6px;height:6px;border-radius:50%;flex-shrink:0;margin-right:5px;}
+.zright{display:flex;align-items:center;gap:5px;}
+.zbar{width:44px;height:3px;background:var(--border);border-radius:2px;overflow:hidden;}
+.zfill{height:100%;border-radius:2px;}
+.znum{font-family:"DM Mono",monospace;font-size:.56rem;width:32px;text-align:right;}
+.ml-row{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px;}
+.ml-tag{font-family:"DM Mono",monospace;font-size:.56rem;padding:2px 7px;border-radius:3px;
+  border:1px solid rgba(38,198,198,.25);background:rgba(38,198,198,.07);color:var(--cool);}
+.stags{display:flex;gap:5px;flex-wrap:wrap;}
+.stag{padding:1px 5px;border-radius:2px;background:rgba(78,101,128,.1);border:1px solid rgba(78,101,128,.18);font-size:.49rem;}
+.leaflet-tooltip{
+  background:rgba(13,18,25,.97)!important;border:1px solid #182030!important;
+  color:#d8e4f0!important;border-radius:5px!important;
+  font-family:"Outfit",sans-serif!important;font-size:.68rem!important;
+  padding:6px 10px!important;box-shadow:0 4px 14px rgba(0,0,0,.5)!important;
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="hdr-left">
+    <div class="orb"></div>
+    <div>
+      <div class="hdr-title">Lee County Parkinson&#8217;s Disease Burden Forecast</div>
+      <div class="hdr-sub">ML · ARIMA(1,1,0) · Kriging · Ridge · FIPS 12071 · CDC WONDER + BEBR/UF + ACS 2023</div>
+    </div>
+  </div>
+  <div class="hdr-right">
+    <div class="ml-badge">&#9881; ML MODEL ACTIVE</div>
+    <div class="yr-disp">
+      <div class="yr-lbl">FORECAST YEAR</div>
+      <div class="yr-val" id="hdrYear">2025</div>
+    </div>
+  </div>
+</header>
+
+<div class="app">
+
+<div class="lpanel">
+  <div class="sec">
+    <div class="sec-h"><h3>&#128197; Forecast Year</h3><span id="slYr">2025</span></div>
+    <div class="sec-b">
+      <div class="slider-wrap">
+        <input type="range" class="yr-slider" id="yrSlider" min="2025" max="2050" value="2025" step="5">
+        <div class="yr-lbs"><span>2025</span><span>2030</span><span>2035</span><span>2040</span><span>2045</span><span>2050</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-h"><h3>&#9881; ML Modules</h3></div>
+    <div class="sec-b">
+      <div class="ml-row">
+        <span class="ml-tag" id="lstmTag">&#9711; LSTM</span>
+        <span class="ml-tag" id="krigTag">&#9711; Kriging</span>
+        <span class="ml-tag" id="ridgeTag">Ridge R&#178;=<span id="r2val">...</span></span>
+      </div>
+      <div id="mlStatus" style="font-size:.6rem;color:var(--cool);line-height:1.7;padding:5px 7px;background:rgba(38,198,198,.05);border-radius:4px;border:1px solid rgba(38,198,198,.15);">
+        <span id="mlStatusText">&#9654; Initializing TensorFlow.js&#8230;</span>
+      </div>
+      <div id="mlResults" style="font-size:.58rem;color:var(--muted);line-height:1.8;padding:5px 7px;margin-top:4px;background:rgba(24,32,48,.5);border-radius:4px;display:none;">
+        <div id="mlResLine1"></div>
+        <div id="mlResLine2"></div>
+        <div id="mlResLine3"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-h"><h3>&#128202; County Statistics</h3><span id="statYr">2025</span></div>
+    <div class="sec-b">
+      <div class="stat-grid">
+        <div class="sc"><span class="sv" id="sTot">&#8212;</span><div class="sl">BEBR Pop</div></div>
+        <div class="sc"><span class="sv" id="sCases">&#8212;</span><div class="sl">PD Cases</div></div>
+        <div class="sc"><span class="sv" id="sAamr">&#8212;</span><div class="sl">AAMR/100K</div></div>
+        <div class="sc"><span class="sv" id="sGrowth">&#8212;</span><div class="sl">vs 2025</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-h"><h3>&#128506; Display Mode</h3></div>
+    <div class="sec-b" style="display:flex;flex-direction:column;gap:8px;">
+      <div class="btn-row" id="layerBtns">
+        <button class="tb on" data-layer="kriging">&#128293; Kriging</button>
+        <button class="tb" data-layer="heat">&#127777; Heat</button>
+        <button class="tb" data-layer="bubble">&#11093; Bubble</button>
+        <button class="tb" data-layer="choro">&#9632; Choro</button>
+      </div>
+      <div class="btn-row" id="riskBtns">
+        <button class="tb on" data-risk="all">All</button>
+        <button class="tb" data-risk="Critical">&#128308; Critical</button>
+        <button class="tb" data-risk="High">&#128992; High</button>
+        <button class="tb" data-risk="Moderate">&#128309; Moderate</button>
+        <button class="tb" data-risk="Low">&#128994; Low</button>
+      </div>
+      <div><div class="legend-bar"></div>
+        <div class="legend-lbs"><span>Low</span><span>Moderate</span><span>High</span><span>Critical</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-h"><h3>&#128101; PD Cases by Age Band</h3></div>
+    <div class="sec-b"><div class="age-bars" id="ageBars"></div></div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-h"><h3>&#128218; Data Sources</h3></div>
+    <div class="sec-b" style="font-size:.6rem;line-height:1.85;color:var(--muted);">
+      <div>&#8226; CDC WONDER AAMR 1999&#8211;2022 (ICD-10 G20)</div>
+      <div>&#8226; BEBR/UF Bulletin 198 (Jan 2024) Medium</div>
+      <div>&#8226; BEBR/UF Bulletin 199 (Nov 2024) Age/Sex</div>
+      <div>&#8226; ACS 2019&#8211;2023 5yr ZIP-level 65+ estimates</div>
+      <div>&#8226; Zhang et al. 2010 (Medicare prevalence)</div>
+      <div>&#8226; Willis et al. 2022 (npj Parkinson&#8217;s Dis.)</div>
+      <div>&#8226; Weresh et al. 2025 (ARIMA, PMC11755521)</div>
+    </div>
+  </div>
+</div>
+
+<div class="mapwrap">
+  <div id="map"></div>
+  <div class="map-ctrls">
+    <button class="mc on" id="btnDark">&#127761; Dark</button>
+    <button class="mc" id="btnStreet">&#127970; Street</button>
+    <button class="mc" id="btnSat">&#128752; Sat</button>
+  </div>
+  <div class="map-footer" id="mapFooter">Kriging surface active &#8212; click any zone for details</div>
+</div>
+
+<div class="rpanel">
+  <div class="sec">
+    <div class="sec-h"><h3>&#128205; Selected Zone</h3></div>
+    <div class="sec-b" id="zoneDetail">
+      <div style="color:var(--muted);font-size:.63rem;text-align:center;padding:12px 0;line-height:1.9;">
+        Select a ZIP zone on the map<br>to view ML-modeled PD burden.
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-h"><h3>&#128200; ARIMA Forecast + 80% CI</h3></div>
+    <div class="sec-b"><div class="ch-wrap-lg"><canvas id="arimaChart"></canvas></div></div>
+  </div>
+
+
+  <div class="sec">
+    <div class="sec-h"><h3>&#127302; Live LSTM vs ARIMA Forecast</h3><span id="lstmStatusBadge" style="font-size:.52rem;color:var(--cool)">Trainingu2026</span></div>
+    <div class="sec-b"><div class="ch-wrap-lg"><canvas id="lstmCompareChart"></canvas></div></div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-h"><h3>&#128308; Highest Burden ZIPs</h3><span id="topYr">2025</span></div>
+    <div class="sec-b"><div class="zlist" id="zipList"></div></div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-h"><h3>&#128208; BEBR Pop + ARIMA Rate Scaling</h3></div>
+    <div class="sec-b"><div class="ch-wrap"><canvas id="scalingChart"></canvas></div></div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-h"><h3>&#128218; Methodology</h3></div>
+    <div class="sec-b" style="font-size:.6rem;line-height:1.85;color:var(--muted);">
+      <div>&#8226; ACS 2019&#8211;2023: 65+ by ZIP (N=792,692)</div>
+      <div>&#8226; Zhang 2010: Medicare PD rates per 100K</div>
+      <div>&#8226; Weresh 2025: ARIMA AAMR 1999&#8211;2022</div>
+      <div>&#8226; BEBR 2024 medium projections</div>
+      <div>&#8226; Ridge R&#178;=0.72 (pct65+log(pop)+coastal)</div>
+      <div>&#8226; Kriging: exponential variogram model</div>
+    </div>
+  </div>
+</div>
+
+<div class="bbar">
+  <div>Lee County FL &#183; FIPS 12071 &#183; ARIMA(1,1,0) + Kriging + Ridge &#183; Feb 2026</div>
+  <div class="stags">
+    <span class="stag">CDC WONDER 1999&#8211;2022</span>
+    <span class="stag">BEBR 2024</span>
+    <span class="stag">ACS 2023</span>
+    <span class="stag">Zhang 2010</span>
+    <span class="stag">Weresh 2025</span>
+  </div>
+  <div>&#9888; Public health planning only &#8212; not diagnostic.</div>
+</div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0/dist/tf.min.js"></script>
+<script>
+(function() {
+"use strict";
+
+var ML = {"arima":{"historical_years":[1999,2000,2001,2002,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022],"historical_aamr":[88.9,88.36,87.82,87.28,86.75,86.22,85.7,85.17,84.65,84.14,83.62,83.11,82.61,82.1,81.6,81.1,84.55,88.16,91.91,95.83,99.91,104.17,108.6,113.23],"forecast_years":[2023,2024,2025,2026,2027,2028,2029,2030,2031,2032,2033,2034,2035,2036,2037,2038,2039,2040,2041,2042,2043,2044,2045,2046,2047,2048,2049,2050],"forecast_aamr":[118.02,122.96,128.06,133.3,138.69,144.22,149.89,155.7,161.64,167.71,173.91,180.24,186.69,193.26,199.95,206.76,213.67,220.7,227.84,235.09,242.44,249.89,257.44,265.09,272.83,280.67,288.6,296.63],"ci_lower":[116.98,121.49,126.25,131.22,136.36,141.67,147.14,152.75,158.52,164.42,170.46,176.64,182.94,189.37,195.92,202.59,209.38,216.29,223.3,230.43,237.67,245.0,252.45,259.99,267.63,275.37,283.2,291.12],"ci_upper":[119.06,124.43,129.86,135.38,141.02,146.77,152.64,158.64,164.76,171.0,177.37,183.85,190.44,197.16,203.98,210.92,217.97,225.12,232.38,239.74,247.21,254.77,262.43,270.19,278.04,285.98,294.01,302.13],"sigma":0.8132,"beta":[0.253427,0.979421],"arima_params":"ARIMA(1,1,0)"},"zips":[{"zip":"33924","name":"Captiva","lat":26.508,"lng":-82.175,"pop":109,"pct65":0.48,"cases_by_year":{"2025":{"cases":1,"pop65":56,"proj_pop":114,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":1,"pop65":65,"proj_pop":124,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":2,"pop65":73,"proj_pop":131,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":2,"pop65":80,"proj_pop":137,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":3,"pop65":86,"proj_pop":142,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":4,"pop65":92,"proj_pop":146,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":0.0},{"zip":"33957","name":"Sanibel Island","lat":26.452,"lng":-82.038,"pop":6418,"pct65":0.42,"cases_by_year":{"2025":{"cases":49,"pop65":2878,"proj_pop":6698,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":69,"pop65":3348,"proj_pop":7279,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":93,"pop65":3771,"proj_pop":7727,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":121,"pop65":4137,"proj_pop":8066,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":152,"pop65":4455,"proj_pop":8352,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":186,"pop65":4750,"proj_pop":8614,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":0.7291},{"zip":"33921","name":"Boca Grande","lat":26.745,"lng":-82.261,"pop":391,"pct65":0.46,"cases_by_year":{"2025":{"cases":3,"pop65":192,"proj_pop":408,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":5,"pop65":223,"proj_pop":443,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":6,"pop65":252,"proj_pop":471,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":8,"pop65":276,"proj_pop":491,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":10,"pop65":297,"proj_pop":509,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":12,"pop65":317,"proj_pop":525,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":0.2267},{"zip":"33931","name":"Fort Myers Beach","lat":26.456,"lng":-81.948,"pop":8350,"pct65":0.44,"cases_by_year":{"2025":{"cases":66,"pop65":3922,"proj_pop":8714,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":94,"pop65":4563,"proj_pop":9471,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":127,"pop65":5140,"proj_pop":10053,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":165,"pop65":5638,"proj_pop":10494,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":207,"pop65":6072,"proj_pop":10867,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":254,"pop65":6475,"proj_pop":11208,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":0.8118},{"zip":"34134","name":"Bonita Springs N.","lat":26.358,"lng":-81.836,"pop":16475,"pct65":0.41,"cases_by_year":{"2025":{"cases":122,"pop65":7211,"proj_pop":17193,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":173,"pop65":8389,"proj_pop":18686,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":233,"pop65":9450,"proj_pop":19836,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":303,"pop65":10366,"proj_pop":20706,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":380,"pop65":11164,"proj_pop":21440,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":467,"pop65":11904,"proj_pop":22113,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":0.9035},{"zip":"33919","name":"Ft Myers McGregor","lat":26.564,"lng":-81.916,"pop":30412,"pct65":0.38,"cases_by_year":{"2025":{"cases":209,"pop65":12338,"proj_pop":31738,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":296,"pop65":14353,"proj_pop":34494,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":399,"pop65":16168,"proj_pop":36616,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":518,"pop65":17734,"proj_pop":38222,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":650,"pop65":19100,"proj_pop":39578,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":799,"pop65":20366,"proj_pop":40819,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":0.9819},{"zip":"33956","name":"St. James City","lat":26.493,"lng":-82.076,"pop":3405,"pct65":0.4,"cases_by_year":{"2025":{"cases":25,"pop65":1454,"proj_pop":3553,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":35,"pop65":1692,"proj_pop":3862,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":47,"pop65":1906,"proj_pop":4100,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":61,"pop65":2090,"proj_pop":4279,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":77,"pop65":2251,"proj_pop":4431,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":94,"pop65":2400,"proj_pop":4570,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":0.5719},{"zip":"33922","name":"Bokeelia","lat":26.683,"lng":-82.157,"pop":4226,"pct65":0.36,"cases_by_year":{"2025":{"cases":28,"pop65":1624,"proj_pop":4410,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":39,"pop65":1889,"proj_pop":4793,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":53,"pop65":2128,"proj_pop":5088,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":68,"pop65":2335,"proj_pop":5311,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":86,"pop65":2514,"proj_pop":5500,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":105,"pop65":2681,"proj_pop":5672,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":0.5556},{"zip":"34135","name":"Bonita Springs S.","lat":26.332,"lng":-81.782,"pop":48252,"pct65":0.33,"cases_by_year":{"2025":{"cases":288,"pop65":16999,"proj_pop":50355,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":407,"pop65":19776,"proj_pop":54729,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":550,"pop65":22277,"proj_pop":58096,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":713,"pop65":24435,"proj_pop":60644,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":896,"pop65":26317,"proj_pop":62795,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":1101,"pop65":28062,"proj_pop":64765,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":1.0},{"zip":"33928","name":"Estero","lat":26.435,"lng":-81.807,"pop":31926,"pct65":0.3,"cases_by_year":{"2025":{"cases":173,"pop65":10225,"proj_pop":33317,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":245,"pop65":11895,"proj_pop":36211,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":331,"pop65":13400,"proj_pop":38439,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":429,"pop65":14698,"proj_pop":40125,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":539,"pop65":15830,"proj_pop":41548,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":662,"pop65":16879,"proj_pop":42852,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":0.8668},{"zip":"33908","name":"Iona/S.Ft Myers","lat":26.499,"lng":-81.93,"pop":37423,"pct65":0.34,"cases_by_year":{"2025":{"cases":230,"pop65":13584,"proj_pop":39054,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":325,"pop65":15803,"proj_pop":42446,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":439,"pop65":17801,"proj_pop":45058,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":570,"pop65":19526,"proj_pop":47034,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":716,"pop65":21030,"proj_pop":48702,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":880,"pop65":22424,"proj_pop":50230,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":0.9639},{"zip":"33912","name":"Fort Myers SW","lat":26.536,"lng":-81.875,"pop":19533,"pct65":0.32,"cases_by_year":{"2025":{"cases":113,"pop65":6673,"proj_pop":20384,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":160,"pop65":7763,"proj_pop":22155,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":216,"pop65":8745,"proj_pop":23518,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":280,"pop65":9592,"proj_pop":24549,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":352,"pop65":10331,"proj_pop":25420,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":432,"pop65":11016,"proj_pop":26217,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":0.7979},{"zip":"33966","name":"Ft Myers/Gateway S","lat":26.542,"lng":-81.84,"pop":12513,"pct65":0.28,"cases_by_year":{"2025":{"cases":63,"pop65":3740,"proj_pop":13058,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":90,"pop65":4351,"proj_pop":14193,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":121,"pop65":4902,"proj_pop":15066,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":157,"pop65":5377,"proj_pop":15727,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":197,"pop65":5791,"proj_pop":16284,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":242,"pop65":6175,"proj_pop":16795,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":0.6488},{"zip":"33907","name":"Fort Myers S.","lat":26.565,"lng":-81.867,"pop":25033,"pct65":0.29,"cases_by_year":{"2025":{"cases":131,"pop65":7750,"proj_pop":26124,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":186,"pop65":9016,"proj_pop":28393,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":251,"pop65":10157,"proj_pop":30140,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":325,"pop65":11140,"proj_pop":31462,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":408,"pop65":11998,"proj_pop":32578,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":502,"pop65":12794,"proj_pop":33600,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":0.803},{"zip":"33903","name":"N. Fort Myers E","lat":26.683,"lng":-81.867,"pop":23655,"pct65":0.31,"cases_by_year":{"2025":{"cases":133,"pop65":7829,"proj_pop":24686,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":188,"pop65":9107,"proj_pop":26830,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":253,"pop65":10259,"proj_pop":28481,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":328,"pop65":11253,"proj_pop":29730,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":413,"pop65":12120,"proj_pop":30784,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":507,"pop65":12923,"proj_pop":31750,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":0.8215},{"zip":"33917","name":"N. Fort Myers W","lat":26.725,"lng":-81.887,"pop":33380,"pct65":0.28,"cases_by_year":{"2025":{"cases":169,"pop65":9978,"proj_pop":34835,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":239,"pop65":11608,"proj_pop":37860,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":323,"pop65":13076,"proj_pop":40190,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":419,"pop65":14343,"proj_pop":41953,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":526,"pop65":15447,"proj_pop":43440,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":646,"pop65":16471,"proj_pop":44803,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":0.8459},{"zip":"33914","name":"Cape Coral SW","lat":26.562,"lng":-82.005,"pop":45540,"pct65":0.27,"cases_by_year":{"2025":{"cases":222,"pop65":13127,"proj_pop":47525,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":314,"pop65":15271,"proj_pop":51653,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":425,"pop65":17203,"proj_pop":54831,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":551,"pop65":18869,"proj_pop":57236,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":692,"pop65":20322,"proj_pop":59265,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":850,"pop65":21669,"proj_pop":61125,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":0.8934},{"zip":"33904","name":"Cape Coral SE","lat":26.582,"lng":-81.956,"pop":33599,"pct65":0.32,"cases_by_year":{"2025":{"cases":194,"pop65":11478,"proj_pop":35063,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":275,"pop65":13353,"proj_pop":38109,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":371,"pop65":15042,"proj_pop":40454,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":482,"pop65":16499,"proj_pop":42228,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":605,"pop65":17770,"proj_pop":43725,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":743,"pop65":18948,"proj_pop":45097,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":0.9069},{"zip":"33991","name":"Cape Coral W.","lat":26.598,"lng":-82.005,"pop":27725,"pct65":0.24,"cases_by_year":{"2025":{"cases":120,"pop65":7104,"proj_pop":28933,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":170,"pop65":8264,"proj_pop":31446,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":230,"pop65":9309,"proj_pop":33381,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":298,"pop65":10211,"proj_pop":34845,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":374,"pop65":10998,"proj_pop":36081,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":460,"pop65":11727,"proj_pop":37213,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":0.749},{"zip":"33990","name":"Cape Coral E.","lat":26.633,"lng":-81.95,"pop":34713,"pct65":0.22,"cases_by_year":{"2025":{"cases":138,"pop65":8153,"proj_pop":36226,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":195,"pop65":9485,"proj_pop":39372,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":264,"pop65":10684,"proj_pop":41795,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":342,"pop65":11719,"proj_pop":43628,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":430,"pop65":12622,"proj_pop":45175,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":528,"pop65":13459,"proj_pop":46592,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":0.7643},{"zip":"33901","name":"Fort Myers Core","lat":26.64,"lng":-81.872,"pop":24481,"pct65":0.18,"cases_by_year":{"2025":{"cases":80,"pop65":4704,"proj_pop":25548,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":113,"pop65":5473,"proj_pop":27767,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":152,"pop65":6165,"proj_pop":29475,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":197,"pop65":6762,"proj_pop":30768,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":248,"pop65":7283,"proj_pop":31859,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":305,"pop65":7766,"proj_pop":32859,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":0.6345},{"zip":"33905","name":"Fort Myers E.","lat":26.672,"lng":-81.79,"pop":41381,"pct65":0.19,"cases_by_year":{"2025":{"cases":142,"pop65":8394,"proj_pop":43185,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":201,"pop65":9765,"proj_pop":46935,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":272,"pop65":11000,"proj_pop":49823,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":352,"pop65":12065,"proj_pop":52009,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":442,"pop65":12995,"proj_pop":53853,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":544,"pop65":13856,"proj_pop":55542,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":0.7548},{"zip":"33916","name":"Fort Myers Central","lat":26.62,"lng":-81.86,"pop":27943,"pct65":0.15,"cases_by_year":{"2025":{"cases":76,"pop65":4475,"proj_pop":29161,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":107,"pop65":5206,"proj_pop":31694,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":145,"pop65":5864,"proj_pop":33644,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":188,"pop65":6432,"proj_pop":35119,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":236,"pop65":6927,"proj_pop":36365,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":290,"pop65":7387,"proj_pop":37506,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":0.6163},{"zip":"33967","name":"Three Oaks/SW","lat":26.465,"lng":-81.805,"pop":28341,"pct65":0.21,"cases_by_year":{"2025":{"cases":108,"pop65":6354,"proj_pop":29576,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":152,"pop65":7392,"proj_pop":32145,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":206,"pop65":8327,"proj_pop":34123,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":267,"pop65":9133,"proj_pop":35620,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":335,"pop65":9837,"proj_pop":36883,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":411,"pop65":10489,"proj_pop":38040,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":0.7086},{"zip":"33913","name":"Gateway/E.FtMyers","lat":26.558,"lng":-81.733,"pop":31538,"pct65":0.2,"cases_by_year":{"2025":{"cases":114,"pop65":6734,"proj_pop":32913,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":161,"pop65":7834,"proj_pop":35771,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":218,"pop65":8825,"proj_pop":37972,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":283,"pop65":9680,"proj_pop":39638,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":355,"pop65":10425,"proj_pop":41043,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":436,"pop65":11116,"proj_pop":42331,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":0.7152},{"zip":"33920","name":"Alva","lat":26.72,"lng":-81.614,"pop":9062,"pct65":0.24,"cases_by_year":{"2025":{"cases":39,"pop65":2322,"proj_pop":9457,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":56,"pop65":2701,"proj_pop":10278,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":75,"pop65":3043,"proj_pop":10911,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":97,"pop65":3338,"proj_pop":11389,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":122,"pop65":3595,"proj_pop":11793,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":150,"pop65":3833,"proj_pop":12163,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":0.5244},{"zip":"33909","name":"Cape Coral N.","lat":26.673,"lng":-81.968,"pop":40231,"pct65":0.2,"cases_by_year":{"2025":{"cases":145,"pop65":8590,"proj_pop":41984,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":206,"pop65":9993,"proj_pop":45631,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":278,"pop65":11257,"proj_pop":48439,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":360,"pop65":12348,"proj_pop":50563,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":453,"pop65":13298,"proj_pop":52356,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":556,"pop65":14180,"proj_pop":53999,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":0.7641},{"zip":"33993","name":"Cape Coral NW","lat":26.681,"lng":-82.023,"pop":35580,"pct65":0.18,"cases_by_year":{"2025":{"cases":116,"pop65":6837,"proj_pop":37131,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":164,"pop65":7954,"proj_pop":40356,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":221,"pop65":8960,"proj_pop":42839,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":287,"pop65":9828,"proj_pop":44718,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":360,"pop65":10585,"proj_pop":46303,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":443,"pop65":11287,"proj_pop":47756,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":0.7096},{"zip":"33971","name":"Lehigh Acres W.","lat":26.612,"lng":-81.697,"pop":30790,"pct65":0.19,"cases_by_year":{"2025":{"cases":106,"pop65":6245,"proj_pop":32132,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":150,"pop65":7266,"proj_pop":34923,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":202,"pop65":8185,"proj_pop":37072,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":262,"pop65":8977,"proj_pop":38698,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":329,"pop65":9669,"proj_pop":40070,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":404,"pop65":10310,"proj_pop":41327,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":0.6954},{"zip":"33972","name":"Lehigh Acres NE","lat":26.626,"lng":-81.623,"pop":17285,"pct65":0.17,"cases_by_year":{"2025":{"cases":53,"pop65":3137,"proj_pop":18038,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":75,"pop65":3649,"proj_pop":19605,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":101,"pop65":4111,"proj_pop":20811,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":132,"pop65":4509,"proj_pop":21724,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":165,"pop65":4857,"proj_pop":22495,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":203,"pop65":5179,"proj_pop":23200,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":0.5496},{"zip":"33973","name":"Lehigh Acres SE","lat":26.566,"lng":-81.663,"pop":14392,"pct65":0.16,"cases_by_year":{"2025":{"cases":42,"pop65":2458,"proj_pop":15019,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":59,"pop65":2860,"proj_pop":16324,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":80,"pop65":3222,"proj_pop":17328,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":103,"pop65":3534,"proj_pop":18088,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":130,"pop65":3806,"proj_pop":18730,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":159,"pop65":4058,"proj_pop":19317,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":0.4979},{"zip":"33974","name":"Lehigh Acres S.","lat":26.558,"lng":-81.66,"pop":19927,"pct65":0.18,"cases_by_year":{"2025":{"cases":65,"pop65":3829,"proj_pop":20796,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":92,"pop65":4455,"proj_pop":22602,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":124,"pop65":5018,"proj_pop":23992,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":161,"pop65":5504,"proj_pop":25045,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":202,"pop65":5928,"proj_pop":25933,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":248,"pop65":6321,"proj_pop":26746,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":0.5931},{"zip":"33976","name":"Lehigh Acres SW","lat":26.594,"lng":-81.692,"pop":20277,"pct65":0.16,"cases_by_year":{"2025":{"cases":59,"pop65":3464,"proj_pop":21161,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":83,"pop65":4029,"proj_pop":22999,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":112,"pop65":4539,"proj_pop":24414,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":145,"pop65":4979,"proj_pop":25485,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":183,"pop65":5362,"proj_pop":26388,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":224,"pop65":5718,"proj_pop":27216,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":0.5668},{"zip":"33965","name":"Daniels Pkwy","lat":26.529,"lng":-81.855,"pop":4836,"pct65":0.22,"cases_by_year":{"2025":{"cases":19,"pop65":1136,"proj_pop":5047,"arima_factor":1.1579,"rate_per_100k":1693.5},"2030":{"cases":27,"pop65":1321,"proj_pop":5485,"arima_factor":1.4078,"rate_per_100k":2059.0},"2035":{"cases":37,"pop65":1488,"proj_pop":5823,"arima_factor":1.688,"rate_per_100k":2468.9},"2040":{"cases":48,"pop65":1633,"proj_pop":6078,"arima_factor":1.9955,"rate_per_100k":2918.6},"2045":{"cases":60,"pop65":1758,"proj_pop":6294,"arima_factor":2.3277,"rate_per_100k":3404.5},"2050":{"cases":74,"pop65":1875,"proj_pop":6491,"arima_factor":2.682,"rate_per_100k":3922.7}},"risk_score":0.3684}],"kriging_grid":{"2025":[[0.2111,0.2035,0.1963,0.1899,0.1847,0.1814,0.1806,0.1831,0.1892,0.1994,0.2141,0.2337,0.2588,0.2907,0.3311,0.3829,0.4525,0.554,0.6969,0.8296,0.8437,0.7816,0.7087,0.6411,0.5818,0.5312,0.4885,0.453],[0.2042,0.1955,0.1871,0.1793,0.1729,0.1685,0.1668,0.1686,0.1744,0.1846,0.1994,0.219,0.2438,0.275,0.3143,0.3635,0.4279,0.528,0.7026,0.9074,0.894,0.8025,0.7177,0.6443,0.5818,0.5294,0.4857,0.4497],[0.197,0.1872,0.1774,0.1683,0.1605,0.1548,0.1521,0.1532,0.1588,0.1692,0.1843,0.204,0.2284,0.2588,0.2968,0.3427,0.3972,0.4766,0.6686,0.9328,0.8992,0.8005,0.7135,0.6389,0.5759,0.5232,0.4796,0.4439],[0.1897,0.1786,0.1675,0.1568,0.1474,0.1403,0.1365,0.137,0.1426,0.1535,0.1695,0.1897,0.2137,0.2431,0.2802,0.3245,0.3715,0.4148,0.6067,0.8212,0.845,0.7738,0.6954,0.6246,0.5637,0.5125,0.4702,0.4356],[0.1823,0.17,0.1573,0.145,0.1338,0.1251,0.1202,0.1202,0.1259,0.1379,0.1556,0.1772,0.201,0.2288,0.2661,0.3124,0.3615,0.4193,0.5751,0.7357,0.7738,0.7302,0.6657,0.6022,0.5457,0.4975,0.4575,0.4247],[0.175,0.1613,0.147,0.1329,0.1199,0.1094,0.1033,0.1029,0.1092,0.1229,0.1437,0.1684,0.1923,0.2174,0.2555,0.3074,0.3645,0.4414,0.5687,0.679,0.7078,0.679,0.628,0.5733,0.5227,0.4786,0.4417,0.4115],[0.1678,0.1527,0.1369,0.1209,0.1057,0.0934,0.086,0.0854,0.0927,0.1091,0.135,0.1658,0.1913,0.2103,0.2495,0.3104,0.3714,0.4515,0.5678,0.6392,0.6478,0.6253,0.5854,0.5397,0.4955,0.4562,0.4232,0.3961],[0.1608,0.1445,0.1271,0.1091,0.0917,0.0771,0.0686,0.0684,0.077,0.097,0.1308,0.1733,0.205,0.2118,0.2511,0.3257,0.3776,0.4427,0.5595,0.5952,0.5874,0.571,0.5406,0.5031,0.4652,0.4311,0.4023,0.3789],[0.1541,0.1367,0.1179,0.0981,0.0783,0.0611,0.0515,0.0528,0.0632,0.0871,0.1339,0.1964,0.2439,0.2377,0.2758,0.3647,0.3826,0.4087,0.4767,0.5129,0.5229,0.5174,0.4956,0.4648,0.4327,0.4037,0.3795,0.3601],[0.1479,0.1295,0.1096,0.0883,0.0661,0.0457,0.0351,0.0403,0.0537,0.0794,0.1501,0.2436,0.3166,0.3418,0.4002,0.439,0.3857,0.3555,0.3673,0.4185,0.4602,0.4675,0.4523,0.4262,0.3987,0.3746,0.3552,0.3401],[0.1422,0.1232,0.1025,0.0803,0.0564,0.0324,0.0195,0.0337,0.0539,0.0742,0.1812,0.3113,0.4156,0.5003,0.6129,0.5368,0.3808,0.2912,0.3001,0.3578,0.4098,0.425,0.4122,0.3877,0.3637,0.3443,0.3299,0.3194],[0.137,0.1176,0.0968,0.0745,0.0506,0.0249,0.0049,0.037,0.0699,0.1095,0.2364,0.3926,0.5211,0.6322,0.776,0.6081,0.3608,0.2116,0.2508,0.3218,0.3766,0.3933,0.3761,0.3494,0.3278,0.3131,0.3041,0.2984],[0.1324,0.1129,0.0924,0.0711,0.0493,0.0281,0.0196,0.0524,0.0992,0.1708,0.3058,0.479,0.6189,0.7103,0.7664,0.631,0.3503,0.1224,0.2271,0.3054,0.361,0.3745,0.3434,0.31,0.291,0.2816,0.2784,0.2777],[0.1282,0.1088,0.0891,0.0696,0.0517,0.0387,0.0421,0.0749,0.1312,0.2198,0.3628,0.5572,0.7027,0.7449,0.7585,0.6479,0.4119,0.1927,0.244,0.3069,0.3607,0.3709,0.3109,0.2665,0.2527,0.2505,0.2537,0.2579],[0.1243,0.1052,0.0865,0.0693,0.0558,0.0502,0.0613,0.0969,0.1581,0.2513,0.3902,0.5922,0.7474,0.7363,0.7421,0.661,0.4754,0.3045,0.2796,0.3192,0.3657,0.3763,0.2752,0.1999,0.2107,0.2219,0.2314,0.2397],[0.1206,0.1018,0.084,0.0691,0.0596,0.0598,0.0762,0.1144,0.1766,0.2655,0.3837,0.5279,0.6408,0.6797,0.6854,0.6129,0.4692,0.3414,0.3075,0.3348,0.3669,0.353,0.2444,0.1612,0.1804,0.1999,0.2127,0.2237],[0.1171,0.0982,0.0813,0.0684,0.0621,0.0663,0.0862,0.1261,0.1872,0.2676,0.3592,0.4303,0.4934,0.5928,0.6017,0.5312,0.4063,0.3241,0.3228,0.3515,0.3727,0.3559,0.2566,0.1923,0.1798,0.187,0.1982,0.2102],[0.1135,0.0945,0.078,0.0664,0.0625,0.0694,0.0913,0.1322,0.1918,0.2646,0.3381,0.3879,0.4438,0.5194,0.5255,0.4594,0.3354,0.2921,0.3361,0.3724,0.3869,0.3766,0.3656,0.2392,0.191,0.1806,0.1876,0.1991],[0.1099,0.0903,0.0737,0.063,0.0608,0.0693,0.092,0.1334,0.1927,0.2614,0.3282,0.3822,0.437,0.4805,0.4781,0.4188,0.2949,0.2981,0.3613,0.4011,0.4056,0.3887,0.3519,0.2642,0.2018,0.1781,0.1797,0.19],[0.1065,0.0857,0.0684,0.058,0.0572,0.0669,0.0889,0.131,0.1921,0.2598,0.3264,0.3867,0.4424,0.4795,0.47,0.4202,0.3366,0.3467,0.4013,0.4394,0.4244,0.3913,0.3417,0.2691,0.2072,0.1765,0.1729,0.1825],[0.1034,0.081,0.0621,0.0514,0.0525,0.0639,0.0838,0.1267,0.1918,0.2599,0.3278,0.3941,0.4508,0.4985,0.483,0.452,0.414,0.4102,0.4437,0.4838,0.4373,0.39,0.3334,0.2658,0.2051,0.1707,0.1657,0.1764],[0.101,0.0765,0.0549,0.0433,0.0472,0.0626,0.0839,0.1276,0.1937,0.261,0.3287,0.3962,0.4514,0.4941,0.4993,0.4937,0.4809,0.4646,0.4717,0.4795,0.4385,0.3856,0.3259,0.2598,0.1976,0.1597,0.1583,0.172],[0.0999,0.0731,0.0476,0.0335,0.0423,0.0644,0.0932,0.1379,0.1985,0.2627,0.3275,0.3903,0.4448,0.4867,0.511,0.5321,0.5316,0.5004,0.4849,0.4701,0.4315,0.379,0.3194,0.2545,0.1891,0.1439,0.1531,0.1703],[0.1008,0.0723,0.042,0.0217,0.0395,0.0697,0.1046,0.1495,0.205,0.2647,0.3253,0.3835,0.4357,0.4789,0.5143,0.5534,0.5631,0.5172,0.4881,0.461,0.4218,0.3716,0.3144,0.2527,0.1888,0.1402,0.1552,0.1726],[0.1044,0.0756,0.0432,0.0075,0.0434,0.0789,0.1166,0.1608,0.2119,0.2669,0.3226,0.3765,0.4258,0.4689,0.5072,0.5435,0.5499,0.5159,0.4834,0.4511,0.4118,0.3644,0.3113,0.255,0.2002,0.1646,0.166,0.1791],[0.1108,0.084,0.0555,0.037,0.0583,0.0922,0.1295,0.1717,0.2188,0.269,0.3199,0.3693,0.4152,0.4562,0.4923,0.5204,0.5249,0.5027,0.4727,0.44,0.402,0.3581,0.3099,0.2604,0.2152,0.1863,0.1811,0.1885],[0.1197,0.0964,0.0747,0.0651,0.0797,0.1085,0.1432,0.1823,0.2254,0.271,0.3172,0.3622,0.4041,0.4417,0.4736,0.4957,0.4995,0.4841,0.4585,0.4279,0.3924,0.3525,0.3097,0.267,0.2295,0.2048,0.1965,0.1994],[0.1304,0.1112,0.0955,0.0905,0.102,0.1261,0.1571,0.1927,0.2318,0.2729,0.3145,0.355,0.3929,0.4265,0.4541,0.4719,0.4754,0.4641,0.4428,0.4154,0.3833,0.3477,0.3101,0.2734,0.2419,0.2203,0.2107,0.2105]],"2030":[[0.2122,0.2046,0.1974,0.1908,0.1856,0.1823,0.1816,0.184,0.1902,0.2005,0.2153,0.2349,0.2602,0.2922,0.3327,0.3845,0.454,0.5553,0.6978,0.8301,0.844,0.7819,0.7092,0.6417,0.5825,0.532,0.4894,0.454],[0.2052,0.1965,0.1881,0.1803,0.1738,0.1694,0.1677,0.1695,0.1753,0.1856,0.2005,0.2202,0.2452,0.2766,0.3159,0.3652,0.4295,0.5295,0.7035,0.9077,0.8942,0.8028,0.7182,0.6449,0.5825,0.5302,0.4866,0.4507],[0.1981,0.1882,0.1784,0.1692,0.1613,0.1556,0.1529,0.154,0.1597,0.1701,0.1854,0.2053,0.2299,0.2604,0.2985,0.3445,0.399,0.4783,0.6698,0.9331,0.8994,0.8008,0.714,0.6395,0.5765,0.524,0.4805,0.4449],[0.1908,0.1796,0.1684,0.1577,0.1482,0.1411,0.1372,0.1378,0.1434,0.1543,0.1705,0.1909,0.2152,0.2447,0.282,0.3264,0.3734,0.4168,0.6081,0.8218,0.8453,0.7742,0.6959,0.6252,0.5644,0.5133,0.4711,0.4365],[0.1834,0.1709,0.1582,0.1458,0.1346,0.1258,0.1209,0.1208,0.1266,0.1387,0.1565,0.1784,0.2024,0.2306,0.2681,0.3144,0.3635,0.4213,0.5767,0.7366,0.7744,0.7307,0.6663,0.6028,0.5464,0.4984,0.4584,0.4257],[0.176,0.1622,0.1479,0.1337,0.1206,0.1101,0.1039,0.1034,0.1097,0.1236,0.1445,0.1695,0.1937,0.2192,0.2575,0.3094,0.3665,0.4433,0.5703,0.6801,0.7085,0.6796,0.6285,0.574,0.5234,0.4794,0.4426,0.4125],[0.1688,0.1536,0.1377,0.1216,0.1064,0.0939,0.0865,0.0859,0.0931,0.1096,0.1356,0.1668,0.1928,0.2123,0.2516,0.3124,0.3732,0.4533,0.5695,0.6404,0.6485,0.6259,0.586,0.5404,0.4962,0.4571,0.4241,0.3972],[0.1618,0.1454,0.1279,0.1098,0.0923,0.0776,0.069,0.0688,0.0773,0.0973,0.1312,0.1741,0.2064,0.2138,0.2533,0.3276,0.3792,0.4442,0.561,0.5963,0.588,0.5715,0.5412,0.5037,0.466,0.4319,0.4033,0.3799],[0.1551,0.1376,0.1187,0.0988,0.0788,0.0615,0.0518,0.053,0.0634,0.0874,0.1341,0.197,0.2453,0.2398,0.2781,0.3663,0.3839,0.4097,0.4774,0.5133,0.5233,0.5179,0.4962,0.4655,0.4335,0.4046,0.3805,0.3612],[0.1489,0.1304,0.1104,0.0889,0.0666,0.0461,0.0353,0.0405,0.0539,0.0796,0.1503,0.2441,0.3178,0.3436,0.402,0.4402,0.3868,0.3562,0.3671,0.4183,0.4604,0.4679,0.4528,0.4269,0.3996,0.3756,0.3562,0.3413],[0.1432,0.1241,0.1033,0.0809,0.0569,0.0327,0.0196,0.0338,0.054,0.0743,0.1815,0.3119,0.4166,0.5016,0.6138,0.5376,0.3816,0.2918,0.3001,0.3577,0.41,0.4254,0.4127,0.3885,0.3646,0.3453,0.331,0.3206],[0.1381,0.1185,0.0976,0.0751,0.051,0.0251,0.0049,0.037,0.07,0.1096,0.2367,0.3932,0.522,0.6331,0.7763,0.6087,0.3617,0.2125,0.2514,0.3222,0.3769,0.3936,0.3767,0.3501,0.3288,0.3142,0.3052,0.2996],[0.1335,0.1138,0.0932,0.0717,0.0497,0.0283,0.0196,0.0524,0.0993,0.171,0.3061,0.4797,0.6198,0.7113,0.7672,0.6319,0.3513,0.1239,0.2286,0.3062,0.3615,0.3749,0.3439,0.3108,0.292,0.2827,0.2795,0.2789],[0.1293,0.1098,0.0899,0.0703,0.0521,0.0389,0.0422,0.0749,0.1313,0.2201,0.3632,0.5578,0.7037,0.7462,0.7598,0.6493,0.4135,0.1954,0.246,0.308,0.3613,0.3713,0.3113,0.2673,0.2537,0.2515,0.2549,0.2591],[0.1255,0.1062,0.0873,0.07,0.0562,0.0505,0.0614,0.097,0.1582,0.2516,0.3907,0.593,0.7485,0.7381,0.7439,0.6628,0.4777,0.3073,0.2817,0.3205,0.3664,0.3766,0.2754,0.2004,0.2116,0.2229,0.2326,0.241],[0.1219,0.1029,0.085,0.0699,0.0601,0.0601,0.0763,0.1145,0.1768,0.2659,0.3843,0.5289,0.6423,0.6818,0.6873,0.6146,0.4713,0.3435,0.3092,0.336,0.3677,0.3535,0.2444,0.1613,0.1811,0.201,0.2139,0.225],[0.1184,0.0995,0.0824,0.0692,0.0626,0.0666,0.0863,0.1261,0.1873,0.268,0.3599,0.4315,0.4951,0.5947,0.6034,0.5326,0.4075,0.3253,0.3241,0.3527,0.3737,0.3566,0.2568,0.1926,0.1805,0.188,0.1995,0.2116],[0.1149,0.0958,0.0791,0.0673,0.0631,0.0697,0.0914,0.1321,0.1919,0.265,0.3388,0.3891,0.4454,0.5208,0.5267,0.4604,0.336,0.2925,0.3371,0.3735,0.388,0.3776,0.3668,0.24,0.1919,0.1817,0.189,0.2006],[0.1115,0.0917,0.075,0.064,0.0615,0.0697,0.092,0.1334,0.1928,0.2617,0.3289,0.3834,0.4386,0.4817,0.4789,0.4197,0.2955,0.2984,0.3621,0.4022,0.4068,0.3899,0.3532,0.2654,0.203,0.1795,0.1813,0.1917],[0.1081,0.0873,0.0699,0.0592,0.0581,0.0673,0.0888,0.1308,0.1921,0.2601,0.327,0.3878,0.4441,0.4814,0.4713,0.4211,0.3372,0.3472,0.4022,0.4405,0.4258,0.3928,0.3432,0.2706,0.2088,0.1781,0.1747,0.1844],[0.1051,0.0827,0.0637,0.0529,0.0535,0.0644,0.0837,0.1264,0.1918,0.2601,0.3284,0.3951,0.4528,0.5014,0.4847,0.4531,0.4147,0.4108,0.4446,0.4852,0.4388,0.3915,0.335,0.2676,0.2071,0.1727,0.1678,0.1784],[0.1029,0.0784,0.0568,0.045,0.0485,0.0633,0.0838,0.1274,0.1938,0.2613,0.3293,0.3971,0.4534,0.4967,0.5011,0.4948,0.4817,0.4654,0.4727,0.4809,0.4401,0.3873,0.3278,0.2619,0.1999,0.1621,0.1606,0.1742],[0.1019,0.0752,0.0498,0.0355,0.0439,0.0654,0.0935,0.138,0.1987,0.2631,0.3282,0.3913,0.4466,0.4888,0.5128,0.5333,0.5324,0.5012,0.486,0.4714,0.4331,0.3808,0.3214,0.2568,0.1917,0.1467,0.1556,0.1726],[0.103,0.0745,0.0444,0.0241,0.0414,0.0709,0.1052,0.1499,0.2054,0.2653,0.3261,0.3847,0.4373,0.4808,0.5159,0.5545,0.5639,0.5181,0.4893,0.4624,0.4235,0.3734,0.3165,0.255,0.1915,0.1432,0.1578,0.175],[0.1066,0.078,0.0458,0.0103,0.0456,0.0804,0.1176,0.1615,0.2125,0.2676,0.3236,0.3777,0.4273,0.4705,0.5087,0.5447,0.5509,0.517,0.4846,0.4525,0.4134,0.3663,0.3134,0.2574,0.2029,0.1674,0.1687,0.1815],[0.113,0.0864,0.0581,0.0396,0.0605,0.0938,0.1307,0.1726,0.2196,0.2699,0.321,0.3706,0.4166,0.4577,0.4937,0.5217,0.5261,0.5038,0.474,0.4414,0.4036,0.36,0.3121,0.2628,0.2178,0.189,0.1837,0.1909],[0.1219,0.0988,0.0773,0.0676,0.0818,0.1102,0.1445,0.1834,0.2264,0.272,0.3183,0.3634,0.4055,0.4431,0.475,0.4969,0.5007,0.4853,0.4599,0.4294,0.3941,0.3544,0.3118,0.2693,0.2319,0.2073,0.199,0.2018],[0.1326,0.1136,0.0979,0.0929,0.1042,0.1279,0.1586,0.194,0.2329,0.274,0.3157,0.3563,0.3942,0.4279,0.4554,0.4732,0.4767,0.4654,0.4442,0.4169,0.385,0.3495,0.3121,0.2757,0.2443,0.2227,0.2131,0.2128]],"2035":[[0.2111,0.2035,0.1962,0.1897,0.1845,0.1812,0.1804,0.1828,0.1889,0.1991,0.2139,0.2335,0.2587,0.2907,0.3311,0.3829,0.4525,0.554,0.6969,0.8296,0.8437,0.7816,0.7087,0.6411,0.5818,0.5312,0.4886,0.453],[0.2041,0.1955,0.187,0.1792,0.1727,0.1683,0.1665,0.1683,0.1741,0.1843,0.1991,0.2188,0.2437,0.2751,0.3144,0.3636,0.4279,0.528,0.7025,0.9074,0.894,0.8025,0.7178,0.6443,0.5819,0.5294,0.4858,0.4497],[0.197,0.1871,0.1774,0.1682,0.1603,0.1545,0.1518,0.1528,0.1584,0.1688,0.184,0.2038,0.2284,0.2589,0.2969,0.3429,0.3973,0.4766,0.6686,0.9328,0.8993,0.8006,0.7136,0.6389,0.5759,0.5232,0.4797,0.4439],[0.1897,0.1786,0.1674,0.1567,0.1472,0.14,0.1362,0.1366,0.1421,0.153,0.1691,0.1895,0.2137,0.2433,0.2805,0.3248,0.3716,0.4148,0.6067,0.8213,0.8451,0.7739,0.6955,0.6247,0.5637,0.5126,0.4702,0.4356],[0.1823,0.1699,0.1572,0.1448,0.1336,0.1249,0.1198,0.1197,0.1254,0.1373,0.1551,0.177,0.201,0.2291,0.2666,0.3128,0.3618,0.4195,0.5753,0.7359,0.774,0.7304,0.6658,0.6023,0.5458,0.4976,0.4575,0.4247],[0.175,0.1612,0.147,0.1328,0.1197,0.1091,0.1029,0.1023,0.1085,0.1222,0.1431,0.1681,0.1924,0.2178,0.2562,0.308,0.365,0.4418,0.5691,0.6794,0.7081,0.6792,0.6281,0.5734,0.5227,0.4786,0.4417,0.4115],[0.1678,0.1527,0.1368,0.1208,0.1055,0.0931,0.0856,0.0848,0.0919,0.1082,0.1342,0.1654,0.1914,0.211,0.2504,0.3111,0.372,0.4521,0.5686,0.6398,0.6481,0.6255,0.5855,0.5398,0.4955,0.4562,0.4231,0.3961],[0.1608,0.1444,0.127,0.109,0.0916,0.0769,0.0682,0.0678,0.0761,0.096,0.1298,0.1727,0.2051,0.2126,0.2522,0.3265,0.3782,0.4433,0.5603,0.5958,0.5877,0.5712,0.5407,0.5031,0.4652,0.431,0.4022,0.3789],[0.1541,0.1367,0.1179,0.098,0.0781,0.0608,0.0511,0.0521,0.0622,0.0859,0.1326,0.1957,0.2441,0.2388,0.2771,0.3654,0.3832,0.4091,0.4771,0.5131,0.5231,0.5176,0.4957,0.4649,0.4327,0.4036,0.3794,0.3601],[0.1479,0.1295,0.1096,0.0882,0.066,0.0456,0.0348,0.0397,0.0527,0.0781,0.1489,0.2429,0.3168,0.3427,0.4012,0.4395,0.3862,0.3558,0.3671,0.4184,0.4603,0.4676,0.4523,0.4262,0.3987,0.3745,0.3551,0.3401],[0.1422,0.1232,0.1025,0.0802,0.0564,0.0323,0.0193,0.0332,0.0529,0.0728,0.1801,0.3109,0.4158,0.5008,0.6131,0.5369,0.3811,0.2915,0.3001,0.3577,0.4099,0.4251,0.4122,0.3877,0.3636,0.3442,0.3298,0.3193],[0.1371,0.1176,0.0968,0.0744,0.0505,0.0248,0.0048,0.0365,0.0691,0.1083,0.2357,0.3925,0.5215,0.6325,0.7756,0.608,0.3611,0.2121,0.2511,0.322,0.3767,0.3934,0.3761,0.3493,0.3277,0.313,0.3039,0.2983],[0.1324,0.1129,0.0924,0.071,0.0492,0.028,0.0195,0.052,0.0985,0.1701,0.3054,0.4794,0.6195,0.7107,0.7663,0.6308,0.3506,0.1233,0.2278,0.3058,0.3614,0.3747,0.3434,0.3098,0.2908,0.2814,0.2782,0.2776],[0.1282,0.1088,0.0891,0.0696,0.0516,0.0386,0.0419,0.0745,0.1307,0.2194,0.3628,0.558,0.7038,0.7456,0.7585,0.6478,0.4123,0.1939,0.2448,0.3074,0.3611,0.3712,0.3107,0.2662,0.2524,0.2502,0.2535,0.2577],[0.1244,0.1052,0.0864,0.0692,0.0557,0.0501,0.0611,0.0966,0.1577,0.2511,0.3906,0.5934,0.749,0.7372,0.7422,0.6609,0.4763,0.3057,0.2805,0.3199,0.3662,0.3766,0.2748,0.1995,0.2103,0.2215,0.2311,0.2395],[0.1207,0.1018,0.084,0.0691,0.0595,0.0596,0.0759,0.114,0.1763,0.2655,0.3842,0.5292,0.6424,0.6807,0.6857,0.6129,0.47,0.3424,0.3083,0.3354,0.3673,0.353,0.2436,0.1605,0.1798,0.1995,0.2124,0.2235],[0.1171,0.0983,0.0813,0.0683,0.0619,0.066,0.0858,0.1257,0.1869,0.2676,0.3596,0.4314,0.4949,0.5938,0.6021,0.5312,0.4065,0.3247,0.3234,0.3521,0.3731,0.3557,0.2555,0.1913,0.1791,0.1865,0.1979,0.21],[0.1136,0.0945,0.078,0.0663,0.0623,0.0691,0.0909,0.1316,0.1913,0.2644,0.3383,0.3887,0.4449,0.5204,0.5259,0.4592,0.3351,0.2921,0.3365,0.373,0.3873,0.3765,0.3648,0.2384,0.1904,0.1801,0.1874,0.199],[0.11,0.0903,0.0737,0.0629,0.0605,0.0689,0.0914,0.1328,0.1922,0.261,0.3281,0.3826,0.4379,0.4816,0.4785,0.4184,0.2938,0.2976,0.3616,0.4018,0.4062,0.3887,0.3514,0.2636,0.2013,0.1778,0.1795,0.19],[0.1066,0.0858,0.0684,0.0579,0.057,0.0665,0.0882,0.1302,0.1914,0.2592,0.3259,0.3867,0.4432,0.4808,0.4706,0.4196,0.3351,0.3458,0.4015,0.4403,0.4252,0.3916,0.3416,0.2688,0.207,0.1763,0.1729,0.1826],[0.1035,0.0811,0.0621,0.0514,0.0522,0.0634,0.083,0.1258,0.191,0.2591,0.3271,0.3935,0.4514,0.5002,0.4837,0.4515,0.4124,0.4091,0.444,0.4852,0.4382,0.3904,0.3335,0.2658,0.2052,0.1708,0.1659,0.1766],[0.1011,0.0766,0.055,0.0433,0.047,0.0621,0.0831,0.1267,0.1929,0.2601,0.3278,0.3953,0.4518,0.4954,0.5,0.4934,0.4796,0.4637,0.4719,0.4806,0.4395,0.3862,0.3263,0.2601,0.1979,0.1601,0.1586,0.1723],[0.1001,0.0733,0.0477,0.0336,0.0422,0.064,0.0925,0.1371,0.1977,0.2619,0.3267,0.3896,0.445,0.4875,0.5117,0.5322,0.5311,0.4999,0.4852,0.4709,0.4324,0.3797,0.3199,0.255,0.1897,0.1446,0.1536,0.1707],[0.1011,0.0725,0.0423,0.0219,0.0395,0.0694,0.104,0.1488,0.2042,0.264,0.3246,0.3831,0.4358,0.4795,0.5149,0.5538,0.5632,0.5172,0.4884,0.4617,0.4226,0.3723,0.315,0.2533,0.1895,0.141,0.1558,0.1731],[0.1046,0.0759,0.0435,0.0078,0.0435,0.0787,0.1162,0.1602,0.2112,0.2662,0.3221,0.3762,0.4259,0.4693,0.5078,0.544,0.5503,0.5162,0.4838,0.4517,0.4125,0.3651,0.312,0.2557,0.2009,0.1653,0.1667,0.1796],[0.111,0.0842,0.0558,0.0372,0.0584,0.092,0.1292,0.1712,0.2182,0.2685,0.3195,0.3691,0.4152,0.4565,0.4928,0.5209,0.5254,0.5031,0.4732,0.4406,0.4026,0.3588,0.3106,0.2611,0.2159,0.187,0.1817,0.189],[0.1199,0.0967,0.075,0.0653,0.0797,0.1084,0.1429,0.1819,0.225,0.2706,0.3169,0.362,0.4042,0.442,0.474,0.4961,0.5,0.4845,0.459,0.4284,0.3931,0.3532,0.3104,0.2677,0.2302,0.2055,0.1971,0.1999],[0.1307,0.1115,0.0958,0.0907,0.1021,0.126,0.1569,0.1924,0.2314,0.2726,0.3143,0.3549,0.3929,0.4268,0.4544,0.4723,0.4758,0.4646,0.4433,0.4159,0.3839,0.3483,0.3107,0.2741,0.2425,0.221,0.2113,0.211]],"2040":[[0.2117,0.2042,0.1969,0.1904,0.1852,0.1819,0.1812,0.1836,0.1898,0.2001,0.2149,0.2346,0.2599,0.2919,0.3324,0.3842,0.4538,0.5551,0.6976,0.83,0.8439,0.7818,0.709,0.6415,0.5823,0.5318,0.4892,0.4537],[0.2048,0.1961,0.1876,0.1799,0.1734,0.169,0.1673,0.1691,0.175,0.1853,0.2002,0.2199,0.2449,0.2763,0.3157,0.3649,0.4293,0.5293,0.7034,0.9076,0.8941,0.8027,0.7181,0.6447,0.5823,0.53,0.4864,0.4504],[0.1976,0.1877,0.178,0.1688,0.1609,0.1552,0.1525,0.1537,0.1593,0.1698,0.1851,0.205,0.2296,0.2602,0.2983,0.3443,0.3988,0.4781,0.6696,0.933,0.8994,0.8008,0.7139,0.6393,0.5764,0.5238,0.4803,0.4446],[0.1903,0.1792,0.168,0.1573,0.1478,0.1407,0.1369,0.1374,0.143,0.154,0.1702,0.1907,0.215,0.2445,0.2819,0.3262,0.3732,0.4166,0.6079,0.8217,0.8453,0.7742,0.6958,0.6251,0.5643,0.5132,0.4709,0.4363],[0.1829,0.1705,0.1578,0.1454,0.1342,0.1255,0.1205,0.1205,0.1262,0.1383,0.1562,0.1782,0.2023,0.2304,0.2679,0.3142,0.3633,0.4211,0.5764,0.7364,0.7743,0.7307,0.6662,0.6028,0.5463,0.4982,0.4582,0.4254],[0.1756,0.1618,0.1475,0.1333,0.1202,0.1097,0.1035,0.1031,0.1094,0.1232,0.1442,0.1693,0.1936,0.2191,0.2575,0.3094,0.3663,0.443,0.57,0.6799,0.7084,0.6795,0.6285,0.5739,0.5233,0.4793,0.4424,0.4123],[0.1683,0.1532,0.1373,0.1212,0.106,0.0936,0.0862,0.0855,0.0927,0.1092,0.1353,0.1666,0.1927,0.2122,0.2516,0.3124,0.3732,0.4531,0.5692,0.6402,0.6485,0.6259,0.586,0.5403,0.4961,0.457,0.4239,0.3969],[0.1613,0.145,0.1275,0.1095,0.092,0.0773,0.0687,0.0684,0.0769,0.097,0.131,0.174,0.2064,0.2139,0.2534,0.3277,0.3793,0.4441,0.5607,0.5961,0.5881,0.5716,0.5413,0.5037,0.4659,0.4318,0.4031,0.3797],[0.1546,0.1372,0.1183,0.0984,0.0785,0.0612,0.0516,0.0527,0.063,0.0869,0.1338,0.197,0.2454,0.24,0.2783,0.3666,0.3842,0.4099,0.4775,0.5135,0.5235,0.5181,0.4963,0.4656,0.4334,0.4045,0.3803,0.361],[0.1484,0.13,0.11,0.0886,0.0663,0.0459,0.0351,0.0401,0.0534,0.079,0.15,0.2441,0.318,0.3439,0.4024,0.4407,0.3872,0.3566,0.3677,0.4188,0.4608,0.4682,0.453,0.427,0.3995,0.3755,0.3561,0.3411],[0.1427,0.1236,0.1029,0.0805,0.0566,0.0325,0.0194,0.0335,0.0535,0.0736,0.1811,0.312,0.4169,0.5021,0.6145,0.5381,0.3821,0.2923,0.3007,0.3583,0.4105,0.4258,0.413,0.3885,0.3645,0.3452,0.3308,0.3204],[0.1376,0.1181,0.0972,0.0747,0.0507,0.0249,0.0049,0.0368,0.0696,0.109,0.2365,0.3934,0.5225,0.6337,0.777,0.6091,0.362,0.213,0.2518,0.3227,0.3775,0.3942,0.377,0.3502,0.3287,0.314,0.305,0.2994],[0.1329,0.1133,0.0927,0.0713,0.0494,0.0281,0.0195,0.0522,0.0989,0.1706,0.3061,0.4801,0.6205,0.7119,0.7676,0.6319,0.3514,0.1242,0.2286,0.3066,0.3622,0.3756,0.3442,0.3107,0.2918,0.2825,0.2793,0.2787],[0.1287,0.1093,0.0894,0.0699,0.0518,0.0386,0.042,0.0747,0.131,0.2199,0.3633,0.5585,0.7046,0.7468,0.7599,0.6488,0.4128,0.1946,0.2456,0.3082,0.362,0.3721,0.3115,0.2671,0.2535,0.2514,0.2547,0.259],[0.1249,0.1057,0.0868,0.0695,0.0558,0.0502,0.0612,0.0967,0.158,0.2515,0.3909,0.5937,0.7496,0.7385,0.7437,0.6619,0.4765,0.3062,0.2812,0.3206,0.367,0.3775,0.2754,0.1999,0.2113,0.2228,0.2325,0.2408],[0.1212,0.1023,0.0844,0.0694,0.0597,0.0597,0.076,0.1141,0.1765,0.2657,0.3845,0.5294,0.6429,0.6822,0.6871,0.6138,0.4703,0.3427,0.3088,0.336,0.3681,0.3538,0.2441,0.1605,0.1807,0.2009,0.2139,0.2249],[0.1177,0.0988,0.0817,0.0686,0.0621,0.0661,0.0859,0.1258,0.187,0.2678,0.3599,0.4316,0.4953,0.5949,0.6032,0.532,0.407,0.3251,0.3238,0.3526,0.3737,0.3564,0.256,0.1919,0.1803,0.1881,0.1995,0.2115],[0.1142,0.0951,0.0784,0.0667,0.0625,0.0692,0.0909,0.1317,0.1915,0.2647,0.3387,0.389,0.4453,0.521,0.5266,0.4598,0.3356,0.2926,0.3369,0.3733,0.3877,0.377,0.3655,0.2393,0.1919,0.182,0.189,0.2004],[0.1107,0.0909,0.0742,0.0633,0.0608,0.069,0.0914,0.1328,0.1923,0.2613,0.3286,0.3831,0.4383,0.4818,0.4788,0.4189,0.2943,0.298,0.3618,0.4019,0.4064,0.3892,0.3521,0.2647,0.203,0.1797,0.1812,0.1914],[0.1073,0.0865,0.069,0.0584,0.0573,0.0666,0.0881,0.1302,0.1915,0.2596,0.3265,0.3874,0.4436,0.4808,0.4707,0.42,0.3356,0.3462,0.4016,0.4402,0.4253,0.392,0.3422,0.2698,0.2084,0.178,0.1743,0.1839],[0.1042,0.0818,0.0628,0.0519,0.0526,0.0636,0.0829,0.1257,0.1912,0.2596,0.3279,0.3945,0.4519,0.5001,0.4838,0.4519,0.4128,0.4094,0.4439,0.4848,0.4382,0.3907,0.3341,0.2667,0.2063,0.1721,0.1672,0.1778],[0.1019,0.0774,0.0558,0.044,0.0475,0.0623,0.083,0.1266,0.1931,0.2607,0.3287,0.3964,0.4524,0.4955,0.5002,0.4938,0.4801,0.464,0.4719,0.4804,0.4394,0.3864,0.3268,0.2608,0.1988,0.161,0.1597,0.1733],[0.1009,0.0742,0.0486,0.0344,0.0428,0.0644,0.0926,0.1372,0.198,0.2625,0.3275,0.3906,0.4456,0.4878,0.512,0.5327,0.5316,0.5003,0.4853,0.4708,0.4324,0.3799,0.3203,0.2556,0.1903,0.1452,0.1544,0.1716],[0.102,0.0734,0.0432,0.0228,0.0402,0.0699,0.1043,0.1491,0.2046,0.2646,0.3254,0.3839,0.4365,0.48,0.5154,0.5544,0.5639,0.5176,0.4886,0.4618,0.4227,0.3725,0.3154,0.2537,0.19,0.1415,0.1564,0.1739],[0.1056,0.0769,0.0445,0.0089,0.0443,0.0793,0.1166,0.1606,0.2117,0.2669,0.3228,0.377,0.4266,0.4699,0.5084,0.5446,0.551,0.5167,0.4841,0.4519,0.4127,0.3654,0.3123,0.2561,0.2013,0.1658,0.1672,0.1803],[0.112,0.0852,0.0569,0.0383,0.0593,0.0927,0.1297,0.1717,0.2188,0.2691,0.3202,0.3699,0.4159,0.4572,0.4934,0.5216,0.526,0.5035,0.4736,0.4408,0.4029,0.359,0.3109,0.2615,0.2163,0.1875,0.1822,0.1897],[0.1209,0.0977,0.076,0.0663,0.0806,0.1091,0.1435,0.1826,0.2256,0.2713,0.3176,0.3627,0.4049,0.4427,0.4747,0.4968,0.5006,0.485,0.4594,0.4288,0.3934,0.3535,0.3107,0.268,0.2305,0.2059,0.1976,0.2005],[0.1316,0.1125,0.0968,0.0917,0.103,0.1268,0.1576,0.1931,0.2321,0.2733,0.315,0.3557,0.3937,0.4275,0.4551,0.473,0.4764,0.4651,0.4438,0.4163,0.3843,0.3486,0.3111,0.2745,0.243,0.2214,0.2118,0.2116]],"2045":[[0.2113,0.2037,0.1965,0.19,0.1848,0.1815,0.1807,0.1832,0.1893,0.1996,0.2143,0.234,0.2592,0.2912,0.3316,0.3834,0.453,0.5544,0.6971,0.8297,0.8437,0.7816,0.7088,0.6412,0.5819,0.5313,0.4887,0.4532],[0.2044,0.1957,0.1872,0.1795,0.173,0.1686,0.1669,0.1687,0.1745,0.1847,0.1996,0.2193,0.2442,0.2756,0.3149,0.3641,0.4284,0.5285,0.7028,0.9075,0.894,0.8025,0.7178,0.6444,0.5819,0.5295,0.4859,0.4499],[0.1972,0.1874,0.1776,0.1684,0.1606,0.1548,0.1521,0.1532,0.1588,0.1693,0.1845,0.2044,0.2289,0.2594,0.2974,0.3434,0.3978,0.4771,0.6689,0.9329,0.8993,0.8006,0.7136,0.639,0.576,0.5233,0.4798,0.4441],[0.1899,0.1788,0.1676,0.1569,0.1475,0.1403,0.1365,0.137,0.1426,0.1535,0.1696,0.19,0.2143,0.2438,0.281,0.3253,0.3722,0.4154,0.6071,0.8214,0.8451,0.7739,0.6955,0.6247,0.5638,0.5127,0.4703,0.4357],[0.1825,0.1701,0.1574,0.1451,0.1339,0.1252,0.1202,0.1201,0.1258,0.1379,0.1557,0.1775,0.2016,0.2297,0.2671,0.3133,0.3623,0.42,0.5757,0.736,0.774,0.7303,0.6658,0.6023,0.5458,0.4977,0.4576,0.4249],[0.1752,0.1614,0.1472,0.133,0.1199,0.1094,0.1032,0.1027,0.109,0.1228,0.1437,0.1687,0.1929,0.2183,0.2566,0.3085,0.3654,0.4422,0.5694,0.6795,0.7081,0.6792,0.6281,0.5734,0.5228,0.4787,0.4418,0.4117],[0.168,0.1529,0.137,0.121,0.1058,0.0933,0.0859,0.0852,0.0924,0.1088,0.1348,0.166,0.192,0.2115,0.2508,0.3116,0.3724,0.4524,0.5687,0.6398,0.648,0.6255,0.5855,0.5398,0.4956,0.4563,0.4233,0.3963],[0.161,0.1446,0.1272,0.1092,0.0918,0.0771,0.0685,0.0682,0.0766,0.0966,0.1305,0.1734,0.2057,0.2131,0.2526,0.3269,0.3785,0.4434,0.5603,0.5957,0.5876,0.5711,0.5407,0.5031,0.4653,0.4312,0.4024,0.379],[0.1543,0.1369,0.118,0.0982,0.0783,0.061,0.0514,0.0525,0.0628,0.0866,0.1334,0.1964,0.2447,0.2392,0.2775,0.3659,0.3835,0.4092,0.4769,0.5128,0.5229,0.5174,0.4957,0.4649,0.4328,0.4038,0.3796,0.3603],[0.1481,0.1297,0.1098,0.0884,0.0662,0.0457,0.035,0.04,0.0533,0.0788,0.1496,0.2436,0.3174,0.3432,0.4017,0.44,0.3865,0.3559,0.3668,0.418,0.4601,0.4675,0.4523,0.4262,0.3988,0.3747,0.3553,0.3403],[0.1424,0.1233,0.1027,0.0803,0.0565,0.0324,0.0194,0.0334,0.0534,0.0735,0.1808,0.3115,0.4163,0.5014,0.6139,0.5376,0.3815,0.2915,0.2998,0.3574,0.4096,0.425,0.4122,0.3878,0.3638,0.3444,0.33,0.3196],[0.1372,0.1178,0.0969,0.0746,0.0506,0.0249,0.0049,0.0367,0.0695,0.1089,0.2362,0.3929,0.522,0.6331,0.7765,0.6086,0.3615,0.2122,0.2509,0.3217,0.3765,0.3933,0.3762,0.3494,0.3278,0.3132,0.3042,0.2986],[0.1326,0.1131,0.0925,0.0711,0.0493,0.0281,0.0195,0.0521,0.0988,0.1704,0.3058,0.4796,0.6199,0.7112,0.767,0.6314,0.351,0.1234,0.2277,0.3056,0.3612,0.3747,0.3434,0.31,0.291,0.2816,0.2785,0.2779],[0.1284,0.109,0.0892,0.0697,0.0517,0.0386,0.0419,0.0746,0.1309,0.2196,0.3629,0.558,0.7039,0.746,0.759,0.6481,0.4125,0.1939,0.2447,0.3073,0.361,0.3712,0.3109,0.2664,0.2526,0.2505,0.2538,0.2581],[0.1245,0.1054,0.0866,0.0693,0.0557,0.0501,0.0611,0.0966,0.1578,0.2512,0.3905,0.5931,0.7489,0.7377,0.7426,0.6609,0.4758,0.3054,0.2803,0.3197,0.3661,0.3766,0.2751,0.1996,0.2105,0.2219,0.2315,0.2399],[0.1209,0.102,0.0842,0.0692,0.0595,0.0596,0.0759,0.114,0.1763,0.2654,0.384,0.5288,0.6422,0.6813,0.6861,0.6129,0.4695,0.3419,0.308,0.3351,0.3672,0.3531,0.2441,0.1607,0.1802,0.2,0.2128,0.2239],[0.1174,0.0985,0.0815,0.0684,0.0619,0.066,0.0858,0.1256,0.1868,0.2674,0.3593,0.4309,0.4945,0.5942,0.6025,0.5313,0.4062,0.3243,0.323,0.3517,0.3729,0.3558,0.2561,0.1918,0.1796,0.1871,0.1985,0.2105],[0.1138,0.0947,0.0781,0.0664,0.0623,0.0691,0.0908,0.1316,0.1912,0.2642,0.338,0.3883,0.4447,0.5206,0.5262,0.4594,0.3351,0.2919,0.3362,0.3725,0.387,0.3763,0.3649,0.2388,0.1909,0.1808,0.1879,0.1994],[0.1103,0.0906,0.0739,0.063,0.0606,0.0689,0.0913,0.1327,0.192,0.2608,0.3279,0.3824,0.4378,0.4816,0.4788,0.4188,0.2942,0.2977,0.3612,0.4012,0.4057,0.3884,0.3514,0.2639,0.2018,0.1784,0.1801,0.1904],[0.1069,0.0861,0.0687,0.0581,0.0571,0.0665,0.0881,0.1301,0.1913,0.2591,0.3258,0.3866,0.4432,0.4809,0.4709,0.4202,0.3358,0.3461,0.4012,0.4395,0.4245,0.3912,0.3415,0.269,0.2074,0.1769,0.1733,0.183],[0.1038,0.0814,0.0624,0.0516,0.0524,0.0635,0.0829,0.1257,0.1909,0.259,0.3271,0.3935,0.4515,0.5005,0.484,0.4521,0.4133,0.4095,0.4436,0.4841,0.4375,0.39,0.3333,0.2659,0.2055,0.1712,0.1663,0.1769],[0.1015,0.077,0.0554,0.0436,0.0472,0.0622,0.083,0.1266,0.1928,0.2601,0.3278,0.3955,0.452,0.4957,0.5003,0.4939,0.4804,0.4641,0.4716,0.4798,0.4388,0.3857,0.3261,0.2601,0.1981,0.1603,0.1589,0.1726],[0.1005,0.0737,0.0481,0.034,0.0424,0.0642,0.0925,0.1371,0.1976,0.2619,0.3268,0.3898,0.4452,0.4877,0.5119,0.5324,0.5315,0.5001,0.4849,0.4703,0.4318,0.3792,0.3197,0.255,0.1897,0.1447,0.1538,0.171],[0.1014,0.0729,0.0427,0.0223,0.0398,0.0696,0.1041,0.1489,0.2042,0.264,0.3247,0.3832,0.436,0.4797,0.515,0.5538,0.5632,0.5172,0.4882,0.4612,0.4221,0.3719,0.3148,0.2531,0.1895,0.1411,0.1559,0.1733],[0.105,0.0763,0.044,0.0083,0.0439,0.0789,0.1163,0.1603,0.2113,0.2663,0.3222,0.3763,0.426,0.4694,0.5078,0.5439,0.5502,0.5161,0.4835,0.4513,0.4121,0.3648,0.3118,0.2556,0.2009,0.1654,0.1668,0.1797],[0.1114,0.0847,0.0563,0.0377,0.0588,0.0923,0.1294,0.1713,0.2183,0.2686,0.3196,0.3692,0.4154,0.4566,0.4928,0.5209,0.5253,0.5029,0.473,0.4402,0.4023,0.3585,0.3104,0.261,0.2159,0.1871,0.1818,0.1892],[0.1203,0.0971,0.0755,0.0658,0.0801,0.1087,0.1431,0.1821,0.2251,0.2707,0.317,0.3621,0.4043,0.4421,0.474,0.4961,0.4998,0.4844,0.4588,0.4282,0.3928,0.3529,0.3102,0.2675,0.2301,0.2055,0.1972,0.2],[0.1311,0.1119,0.0962,0.0911,0.1025,0.1263,0.1572,0.1926,0.2316,0.2727,0.3144,0.355,0.393,0.4268,0.4544,0.4723,0.4757,0.4644,0.4431,0.4157,0.3837,0.3481,0.3106,0.274,0.2425,0.221,0.2114,0.2111]],"2050":[[0.211,0.2034,0.1962,0.1897,0.1845,0.1811,0.1804,0.1828,0.1889,0.1991,0.2139,0.2335,0.2588,0.2908,0.3313,0.3831,0.4528,0.5542,0.6971,0.8297,0.8437,0.7815,0.7086,0.641,0.5817,0.5311,0.4885,0.4529],[0.2041,0.1954,0.187,0.1792,0.1727,0.1682,0.1665,0.1682,0.174,0.1843,0.1991,0.2188,0.2437,0.2751,0.3145,0.3638,0.4282,0.5283,0.7028,0.9075,0.894,0.8024,0.7177,0.6442,0.5817,0.5293,0.4857,0.4496],[0.1969,0.1871,0.1773,0.1681,0.1603,0.1545,0.1517,0.1528,0.1584,0.1688,0.184,0.2038,0.2284,0.259,0.2971,0.3431,0.3976,0.477,0.6689,0.9329,0.8992,0.8005,0.7134,0.6388,0.5758,0.5231,0.4796,0.4438],[0.1896,0.1785,0.1673,0.1566,0.1472,0.14,0.1361,0.1366,0.1421,0.153,0.169,0.1895,0.2137,0.2433,0.2806,0.325,0.3719,0.4153,0.607,0.8213,0.845,0.7738,0.6953,0.6245,0.5636,0.5124,0.4701,0.4355],[0.1823,0.1699,0.1572,0.1448,0.1336,0.1248,0.1198,0.1197,0.1253,0.1373,0.1551,0.1769,0.201,0.2291,0.2666,0.313,0.3621,0.4198,0.5755,0.7359,0.7738,0.7301,0.6656,0.6021,0.5456,0.4974,0.4574,0.4246],[0.1749,0.1612,0.1469,0.1327,0.1196,0.1091,0.1029,0.1023,0.1084,0.1222,0.143,0.168,0.1923,0.2177,0.2562,0.3081,0.3651,0.4419,0.5691,0.6792,0.7078,0.6789,0.6278,0.5732,0.5225,0.4785,0.4416,0.4114],[0.1677,0.1526,0.1368,0.1207,0.1055,0.093,0.0856,0.0848,0.0918,0.1082,0.1341,0.1653,0.1913,0.2109,0.2503,0.3111,0.372,0.4521,0.5684,0.6395,0.6477,0.6252,0.5852,0.5395,0.4953,0.4561,0.423,0.396],[0.1607,0.1444,0.127,0.109,0.0915,0.0768,0.0682,0.0677,0.076,0.0959,0.1297,0.1726,0.205,0.2125,0.2521,0.3265,0.3782,0.4431,0.5599,0.5953,0.5872,0.5707,0.5404,0.5028,0.465,0.4309,0.4022,0.3788],[0.1541,0.1366,0.1178,0.098,0.0781,0.0608,0.0511,0.0521,0.0622,0.0859,0.1325,0.1956,0.244,0.2386,0.277,0.3655,0.3831,0.4088,0.4764,0.5123,0.5224,0.517,0.4953,0.4646,0.4325,0.4035,0.3794,0.36],[0.1478,0.1295,0.1095,0.0882,0.066,0.0456,0.0347,0.0396,0.0527,0.078,0.1488,0.2428,0.3167,0.3427,0.4013,0.4397,0.3861,0.3554,0.3662,0.4173,0.4596,0.467,0.4519,0.4259,0.3985,0.3744,0.3551,0.3401],[0.1421,0.1231,0.1024,0.0802,0.0563,0.0323,0.0192,0.0331,0.0528,0.0727,0.18,0.3107,0.4157,0.5011,0.6138,0.5374,0.3811,0.2911,0.2992,0.3568,0.4091,0.4245,0.4118,0.3874,0.3634,0.3441,0.3297,0.3194],[0.137,0.1175,0.0967,0.0744,0.0504,0.0248,0.0048,0.0365,0.069,0.1082,0.2355,0.3923,0.5215,0.6328,0.7766,0.6085,0.3612,0.2118,0.2505,0.3212,0.376,0.3928,0.3757,0.349,0.3275,0.3129,0.3039,0.2984],[0.1323,0.1128,0.0923,0.0709,0.0491,0.028,0.0194,0.0519,0.0984,0.1699,0.3052,0.4791,0.6194,0.711,0.7669,0.6312,0.3505,0.1232,0.2273,0.3052,0.3608,0.3742,0.343,0.3095,0.2906,0.2813,0.2782,0.2777],[0.1281,0.1087,0.0889,0.0694,0.0515,0.0384,0.0418,0.0743,0.1305,0.2192,0.3625,0.5575,0.7035,0.7458,0.759,0.648,0.412,0.1937,0.2444,0.3069,0.3606,0.3707,0.3103,0.2659,0.2523,0.2502,0.2536,0.2579],[0.1242,0.1051,0.0863,0.0691,0.0555,0.0498,0.0609,0.0963,0.1574,0.2508,0.3901,0.5928,0.7485,0.7374,0.7425,0.661,0.476,0.3054,0.2801,0.3195,0.3657,0.3762,0.2744,0.1989,0.2101,0.2216,0.2313,0.2397],[0.1206,0.1016,0.0838,0.0688,0.0592,0.0593,0.0756,0.1137,0.176,0.2651,0.3838,0.5287,0.642,0.6809,0.6859,0.613,0.4697,0.342,0.3079,0.335,0.3669,0.3526,0.2432,0.1598,0.1797,0.1997,0.2126,0.2238],[0.117,0.0981,0.0811,0.068,0.0616,0.0657,0.0854,0.1252,0.1865,0.2672,0.3593,0.431,0.4945,0.5938,0.6022,0.5313,0.4063,0.3243,0.323,0.3517,0.3727,0.3554,0.2552,0.191,0.1791,0.1869,0.1983,0.2103],[0.1135,0.0943,0.0777,0.066,0.0619,0.0686,0.0904,0.1312,0.1909,0.2641,0.3381,0.3884,0.4447,0.5202,0.5259,0.4593,0.335,0.2918,0.3362,0.3726,0.3869,0.3761,0.3645,0.2383,0.1907,0.1807,0.1878,0.1993],[0.1099,0.0902,0.0735,0.0626,0.0601,0.0684,0.0908,0.1322,0.1917,0.2607,0.3279,0.3825,0.4377,0.4812,0.4783,0.4185,0.2942,0.2976,0.3613,0.4014,0.4058,0.3884,0.3512,0.2636,0.2017,0.1784,0.18,0.1903],[0.1065,0.0857,0.0682,0.0576,0.0565,0.0659,0.0874,0.1295,0.1909,0.259,0.3259,0.3868,0.443,0.4804,0.4703,0.4198,0.3356,0.346,0.4014,0.4399,0.4248,0.3913,0.3414,0.2689,0.2073,0.1768,0.1732,0.1829],[0.1034,0.081,0.0619,0.0511,0.0518,0.0628,0.0822,0.125,0.1905,0.2589,0.3272,0.3938,0.4514,0.4998,0.4834,0.4516,0.4128,0.4094,0.4438,0.4847,0.4379,0.3901,0.3333,0.2658,0.2054,0.1711,0.1662,0.1768],[0.1011,0.0765,0.0549,0.0431,0.0466,0.0615,0.0822,0.1259,0.1924,0.26,0.328,0.3958,0.4519,0.4951,0.4997,0.4933,0.4798,0.4639,0.4718,0.4802,0.4391,0.3859,0.3261,0.2601,0.198,0.1602,0.1588,0.1724],[0.1,0.0732,0.0476,0.0334,0.0418,0.0635,0.0918,0.1364,0.1972,0.2617,0.3268,0.3899,0.445,0.4872,0.5113,0.5319,0.531,0.4999,0.485,0.4706,0.432,0.3794,0.3197,0.2549,0.1896,0.1445,0.1536,0.1708],[0.101,0.0724,0.0422,0.0218,0.0392,0.0689,0.1034,0.1482,0.2038,0.2638,0.3246,0.3832,0.4358,0.4793,0.5145,0.5533,0.5628,0.5169,0.4882,0.4614,0.4223,0.372,0.3148,0.2531,0.1894,0.1409,0.1558,0.1731],[0.1046,0.0758,0.0434,0.0078,0.0433,0.0783,0.1157,0.1597,0.2109,0.266,0.322,0.3762,0.4258,0.4691,0.5074,0.5435,0.5499,0.5159,0.4835,0.4514,0.4122,0.3649,0.3118,0.2555,0.2008,0.1652,0.1666,0.1796],[0.111,0.0842,0.0558,0.0372,0.0582,0.0917,0.1288,0.1708,0.2179,0.2683,0.3194,0.369,0.4151,0.4563,0.4924,0.5205,0.5249,0.5027,0.4729,0.4402,0.4023,0.3585,0.3104,0.2609,0.2158,0.1869,0.1816,0.189],[0.1199,0.0967,0.075,0.0653,0.0796,0.1081,0.1426,0.1816,0.2247,0.2704,0.3168,0.3619,0.404,0.4417,0.4737,0.4957,0.4995,0.4842,0.4587,0.4281,0.3928,0.3529,0.3102,0.2674,0.23,0.2053,0.197,0.1999],[0.1306,0.1114,0.0957,0.0907,0.102,0.1258,0.1567,0.1922,0.2312,0.2724,0.3141,0.3548,0.3928,0.4265,0.4541,0.472,0.4755,0.4642,0.443,0.4156,0.3836,0.348,0.3105,0.2739,0.2424,0.2208,0.2112,0.211]]},"kriging_bounds":{"lat_min":26.3,"lat_max":26.8,"lng_min":-82.35,"lng_max":-81.55,"n":28},"county_totals":{"2025":3641,"2030":5152,"2035":6957,"2040":9022,"2045":11333,"2050":13921},"ridge_beta":[0.576176,1.049675,0.010165],"ridge_r2":0.7196,"risk_scores":{"33924":0.0,"33957":0.7291,"33921":0.2267,"33931":0.8118,"34134":0.9035,"33919":0.9819,"33956":0.5719,"33922":0.5556,"34135":1.0,"33928":0.8668,"33908":0.9639,"33912":0.7979,"33966":0.6488,"33907":0.803,"33903":0.8215,"33917":0.8459,"33914":0.8934,"33904":0.9069,"33991":0.749,"33990":0.7643,"33901":0.6345,"33905":0.7548,"33916":0.6163,"33967":0.7086,"33913":0.7152,"33920":0.5244,"33909":0.7641,"33993":0.7096,"33971":0.6954,"33972":0.5496,"33973":0.4979,"33974":0.5931,"33976":0.5668,"33965":0.3684},"bebr":{"2023":800989,"2025":835900,"2030":908500,"2035":964400,"2040":1006700,"2045":1042400,"2050":1075100},"aamr_scaling":{"2025":1.157866,"2030":1.407776,"2035":1.687975,"2040":1.995479,"2045":2.327667,"2050":2.682007}};
+
+var PROJ_YEARS = [2025,2030,2035,2040,2045,2050];
+
+var AGE_BANDS = [
+  {band:"50-54", base:47267, rate:50,   color:"#2471a3"},
+  {band:"55-59", base:53355, rate:100,  color:"#2e86c1"},
+  {band:"60-64", base:59362, rate:200,  color:"#f39c12"},
+  {band:"65-69", base:61137, rate:554,  color:"#e07339"},
+  {band:"70-74", base:60763, rate:1080, color:"#e74c3c"},
+  {band:"75-79", base:49999, rate:1640, color:"#c0392b"},
+  {band:"80-84", base:31246, rate:2440, color:"#922b21"},
+  {band:"85+",   base:26335, rate:2949, color:"#641e16"}
+];
+
+var TILES = {
+  dark:   "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+  street: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+  sat:    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+};
+
+var currentYear  = 2025;
+var activeLayer  = "kriging";
+var activeRisk   = "all";
+var selectedZip  = null;
+
+var map, tileLayer;
+var krigingMarkers = [];
+var heatMarkers    = [];
+var bubbleMarkers  = [];
+var choroMarkers   = [];
+var hitMarkers     = [];
+var arimaChart, scalingChart;
+
+// ── DATA HELPERS ──────────────────────────────────────────────────────────────
+function getPop(yr) {
+  var b = ML.bebr, keys = Object.keys(b).map(Number).sort(function(a,b){return a-b;});
+  for (var i = 0; i < keys.length-1; i++) {
+    if (yr >= keys[i] && yr <= keys[i+1]) {
+      var t = (yr-keys[i])/(keys[i+1]-keys[i]);
+      return Math.round(b[String(keys[i])] + t*(b[String(keys[i+1])]-b[String(keys[i])]));
+    }
+  }
+  return b["2050"];
+}
+
+function getArimaFactor(yr) {
+  var s = ML.aamr_scaling, keys = Object.keys(s).map(Number).sort(function(a,b){return a-b;});
+  for (var i = 0; i < keys.length-1; i++) {
+    if (yr >= keys[i] && yr <= keys[i+1]) {
+      var t = (yr-keys[i])/(keys[i+1]-keys[i]);
+      return +s[String(keys[i])] + t*(+s[String(keys[i+1])]-+s[String(keys[i])]);
+    }
+  }
+  return +s["2050"];
+}
+
+function getZipCases(zip, yr) {
+  var c = zip.cases_by_year, yrStr = String(yr);
+  if (c[yrStr] !== undefined) return c[yrStr].cases;
+  var keys = Object.keys(c).map(Number).sort(function(a,b){return a-b;});
+  for (var i = 0; i < keys.length-1; i++) {
+    if (yr >= keys[i] && yr <= keys[i+1]) {
+      var t = (yr-keys[i])/(keys[i+1]-keys[i]);
+      return Math.round(c[String(keys[i])].cases + t*(c[String(keys[i+1])].cases-c[String(keys[i])].cases));
+    }
+  }
+  return c["2050"].cases;
+}
+
+function countyTotal(yr) {
+  var ct = ML.county_totals, yrStr = String(yr);
+  if (ct[yrStr] !== undefined) return ct[yrStr];
+  var keys = Object.keys(ct).map(Number).sort(function(a,b){return a-b;});
+  for (var i = 0; i < keys.length-1; i++) {
+    if (yr >= keys[i] && yr <= keys[i+1]) {
+      var t = (yr-keys[i])/(keys[i+1]-keys[i]);
+      return Math.round(ct[String(keys[i])] + t*(ct[String(keys[i+1])]-ct[String(keys[i])]));
+    }
+  }
+  return ct["2050"];
+}
+
+function getRisk(cases) {
+  if (cases >= 800) return {tier:"Critical", color:"#c0392b", dot:"#e74c3c", txt:"#ff6b6b", stroke:"#ff6b6b"};
+  if (cases >= 250) return {tier:"High",     color:"#d4691e", dot:"#f39c12", txt:"#f0a33a", stroke:"#f0a33a"};
+  if (cases >= 80)  return {tier:"Moderate", color:"#2471a3", dot:"#3498db", txt:"#5dade2", stroke:"#5dade2"};
+  return                   {tier:"Low",      color:"#1e8449", dot:"#2ecc71", txt:"#58d68d", stroke:"#58d68d"};
+}
+
+function rampRGB(t) {
+  if (t < 0.25) {
+    var s = t/0.25;
+    return [Math.round(30+s*13), Math.round(132-s*21), Math.round(73-s*27)];
+  } else if (t < 0.5) {
+    var s = (t-0.25)/0.25;
+    return [Math.round(43+s*181), Math.round(111-s*11), Math.round(46+s*11)];
+  } else if (t < 0.75) {
+    var s = (t-0.5)/0.25;
+    return [Math.round(224-s*32), Math.round(100-s*50), Math.round(57-s*30)];
+  } else {
+    var s = (t-0.75)/0.25;
+    return [Math.round(192-s*69), Math.round(50-s*50), Math.round(27-s*16)];
+  }
+}
+
+// ── LAYER RENDERING ───────────────────────────────────────────────────────────
+function clearArr(arr) {
+  arr.forEach(function(m) { try { map.removeLayer(m); } catch(e) {} });
+  arr.length = 0;
+}
+
+function renderKriging() {
+  clearArr(krigingMarkers);
+  if (activeLayer !== "kriging") return;
+
+  var grid   = ML.kriging_grid[String(currentYear)] || ML.kriging_grid["2050"];
+  var bounds = ML.kriging_bounds;
+  var n      = bounds.n;
+  var latStep = (bounds.lat_max - bounds.lat_min) / (n-1);
+  var lngStep = (bounds.lng_max - bounds.lng_min) / (n-1);
+  var cellR   = Math.max(latStep, lngStep) * 111000 * 0.78;
+
+  for (var i = 0; i < n; i++) {
+    for (var j = 0; j < n; j++) {
+      var val = grid[i][j];
+      var lat = bounds.lat_min + i * latStep;
+      var lng = bounds.lng_min + j * lngStep;
+      if (lat < 26.26 || lat > 26.84 || lng < -82.40 || lng > -81.50) continue;
+
+      var rgb = rampRGB(val);
+      var fillColor = "rgb("+rgb[0]+","+rgb[1]+","+rgb[2]+")";
+      var alpha = val * 0.65 + 0.05;
+
+      var c = L.circle([lat, lng], {
+        radius: cellR, fillColor: fillColor,
+        fillOpacity: alpha, color: "transparent",
+        weight: 0, interactive: false
+      }).addTo(map);
+      krigingMarkers.push(c);
+    }
+  }
+}
+
+function renderHeat() {
+  clearArr(heatMarkers);
+  if (activeLayer !== "heat") return;
+
+  var allC = ML.zips.map(function(z){return getZipCases(z,currentYear);});
+  var maxC = Math.max.apply(null,allC) || 1;
+
+  ML.zips.forEach(function(zip) {
+    var cases = getZipCases(zip, currentYear);
+    var risk  = getRisk(cases);
+    if (activeRisk !== "all" && risk.tier !== activeRisk) return;
+    var t   = Math.min(cases/maxC, 1);
+    var rgb = rampRGB(t);
+    var col = "rgb("+rgb[0]+","+rgb[1]+","+rgb[2]+")";
+    var r   = 900 + Math.sqrt(zip.pop)*40;
+
+    var outer = L.circle([zip.lat,zip.lng],{radius:r*(1+t*1.3),fillColor:col,fillOpacity:0.18,color:"transparent",weight:0,interactive:false}).addTo(map);
+    var inner = L.circle([zip.lat,zip.lng],{radius:r*0.52,fillColor:col,fillOpacity:0.72,color:col,weight:1,interactive:false}).addTo(map);
+    heatMarkers.push(outer,inner);
+  });
+}
+
+function renderBubble() {
+  clearArr(bubbleMarkers);
+  if (activeLayer !== "bubble") return;
+
+  ML.zips.forEach(function(zip) {
+    var cases = getZipCases(zip, currentYear);
+    var risk  = getRisk(cases);
+    if (activeRisk !== "all" && risk.tier !== activeRisk) return;
+    var r = Math.max(5, Math.min(30, 4+Math.sqrt(cases)*0.8));
+    var m = L.circleMarker([zip.lat,zip.lng],{radius:r,fillColor:risk.color,fillOpacity:0.85,color:"#ffffff",weight:1,interactive:false}).addTo(map);
+    bubbleMarkers.push(m);
+  });
+}
+
+function renderChoro() {
+  clearArr(choroMarkers);
+  if (activeLayer !== "choro") return;
+
+  ML.zips.forEach(function(zip) {
+    var cases = getZipCases(zip, currentYear);
+    var risk  = getRisk(cases);
+    if (activeRisk !== "all" && risk.tier !== activeRisk) return;
+    var r = 1200 + Math.sqrt(zip.pop)*33;
+    var m = L.circle([zip.lat,zip.lng],{radius:r,fillColor:risk.color,fillOpacity:0.5,color:risk.color,weight:1.5,interactive:false}).addTo(map);
+    choroMarkers.push(m);
+  });
+}
+
+function buildHitMarkers() {
+  clearArr(hitMarkers);
+  ML.zips.forEach(function(zip) {
+    var cases = getZipCases(zip, currentYear);
+    var risk  = getRisk(cases);
+
+    var m = L.circleMarker([zip.lat,zip.lng],{
+      radius:14,fillOpacity:0,opacity:0,fillColor:"transparent",color:"transparent"
+    }).addTo(map);
+
+    m.bindTooltip(
+      "<b>"+zip.name+"</b> ("+zip.zip+")<br>"+
+      "Est. PD Cases: <b>"+cases.toLocaleString()+"</b><br>"+
+      "65+: "+Math.round(zip.pct65*100)+"% &bull; Risk: <b>"+risk.tier+"</b>",
+      {className:"leaflet-tooltip"}
+    );
+
+    (function(z){ m.on("click",function(){ selectZip(z); }); }(zip));
+    hitMarkers.push(m);
+  });
+}
+
+function refreshHitTooltips() {
+  var idx = 0;
+  ML.zips.forEach(function(zip) {
+    if (idx >= hitMarkers.length) return;
+    var cases = getZipCases(zip, currentYear);
+    var risk  = getRisk(cases);
+    hitMarkers[idx].unbindTooltip();
+    hitMarkers[idx].bindTooltip(
+      "<b>"+zip.name+"</b> ("+zip.zip+")<br>"+
+      "Est. PD Cases: <b>"+cases.toLocaleString()+"</b><br>"+
+      "65+: "+Math.round(zip.pct65*100)+"% &bull; Risk: <b>"+risk.tier+"</b>",
+      {className:"leaflet-tooltip"}
+    );
+    idx++;
+  });
+}
+
+function renderAllLayers() {
+  renderKriging();
+  renderHeat();
+  renderBubble();
+  renderChoro();
+  refreshHitTooltips();
+}
+
+// ── SELECTION ─────────────────────────────────────────────────────────────────
+function selectZip(zip) {
+  selectedZip = zip;
+  var cases  = getZipCases(zip, currentYear);
+  var base25 = getZipCases(zip, 2025);
+  var proj50 = getZipCases(zip, 2050);
+  var growth = base25 > 0 ? Math.round((proj50/base25-1)*100) : 0;
+  var risk   = getRisk(cases);
+  var af     = getArimaFactor(currentYear);
+  var ps     = getPop(currentYear) / (ML.bebr["2023"] || 800989);
+  var pp     = Math.round(zip.pop * ps);
+  var p65    = Math.round(pp * zip.pct65);
+
+  document.getElementById("zoneDetail").innerHTML =
+    row("ZIP / Community", zip.zip+" &ndash; "+zip.name) +
+    row("Total Pop ("+currentYear+")", pp.toLocaleString()) +
+    row("Est. 65+ Pop", p65.toLocaleString()+" ("+Math.round(zip.pct65*100)+"%)") +
+    row("Est. PD Cases ("+currentYear+")", '<span class="hl">'+cases.toLocaleString()+"</span>") +
+    row("Risk Tier", '<span style="color:'+risk.txt+';font-weight:600">'+risk.tier+"</span>") +
+    row("ARIMA Rate Factor", "&times;"+af.toFixed(4)) +
+    row("Ridge Risk Score", (zip.risk_score*100).toFixed(1)+"/100") +
+    row("2025 Baseline Cases", base25.toLocaleString()) +
+    row("2050 Projection", proj50.toLocaleString()) +
+    row("Growth 2025&#x2192;2050", '<span class="up">&#9650; '+growth+"%</span>") +
+    '<div style="margin-top:7px;padding:6px;background:rgba(24,32,48,.6);border-radius:4px;font-size:.57rem;color:var(--muted);line-height:1.7;">ARIMA(1,1,0) fitted to CDC WONDER AAMR 1999&#8211;2022 (Weresh 2025). Rate factor scales Zhang 2010 Medicare prevalence. Kriging uses exponential variogram.</div>';
+
+  var mf = document.getElementById("mapFooter");
+  if (mf) mf.textContent =
+    zip.name+" ("+zip.zip+") — "+cases.toLocaleString()+" est. cases — "+risk.tier+" Risk — ARIMA ×"+af.toFixed(3);
+
+  map.panTo([zip.lat, zip.lng], {animate:true, duration:0.8});
+  updateZipList();
+}
+
+function row(label, val) {
+  return '<div class="ir"><span>'+label+'</span><span>'+val+'</span></div>';
+}
+
+window.selectZipByCode = function(code) {
+  for (var i = 0; i < ML.zips.length; i++) {
+    if (ML.zips[i].zip === code) { selectZip(ML.zips[i]); return; }
+  }
+};
+
+// ── STATS ─────────────────────────────────────────────────────────────────────
+function updateStats() {
+  var tot  = countyTotal(currentYear);
+  var base = countyTotal(2025);
+  var pop  = getPop(currentYear);
+
+  var fYrs = ML.arima.forecast_years, fVals = ML.arima.forecast_aamr;
+  var aamr = 110.6;
+  if (currentYear >= fYrs[0]) {
+    var idx = fYrs.indexOf(currentYear);
+    if (idx >= 0) {
+      aamr = fVals[idx];
+    } else {
+      for (var i = 0; i < fYrs.length-1; i++) {
+        if (currentYear >= fYrs[i] && currentYear <= fYrs[i+1]) {
+          var t = (currentYear-fYrs[i])/(fYrs[i+1]-fYrs[i]);
+          aamr = fVals[i] + t*(fVals[i+1]-fVals[i]);
+          break;
+        }
+      }
+    }
+  }
+
+  var gStr = currentYear===2025 ? "Baseline" : "+"+Math.round((tot/base-1)*100)+"%";
+  function setTC(id,v){var e=document.getElementById(id);if(e)e.textContent=v;}
+  setTC("sTot",    Math.round(pop/1000)+"K");
+  setTC("sCases",  tot.toLocaleString());
+  setTC("sAamr",   aamr.toFixed(1));
+  setTC("sGrowth", gStr);
+  setTC("hdrYear", String(currentYear));
+  setTC("slYr",    String(currentYear));
+  setTC("statYr",  String(currentYear));
+  setTC("topYr",   String(currentYear));
+}
+
+function updateAgeBars() {
+  var af = getArimaFactor(currentYear);
+  var ps = getPop(currentYear) / getPop(2023);
+  var vals = AGE_BANDS.map(function(a){
+    return Math.round(a.base * ps * a.rate * af / 100000);
+  });
+  var mx = Math.max.apply(null,vals) || 1;
+  document.getElementById("ageBars").innerHTML = AGE_BANDS.map(function(a,i){
+    return '<div class="ab-row">'+
+      '<span class="ab-lbl">'+a.band+'</span>'+
+      '<div class="ab-track"><div class="ab-fill" style="width:'+Math.round(vals[i]/mx*100)+'%;background:'+a.color+'"></div></div>'+
+      '<span class="ab-cnt">'+vals[i].toLocaleString()+'</span>'+
+      '</div>';
+  }).join("");
+}
+
+function updateZipList() {
+  var sorted = ML.zips.slice().sort(function(a,b){
+    return getZipCases(b,currentYear)-getZipCases(a,currentYear);
+  }).slice(0,10);
+
+  var maxC = getZipCases(sorted[0],currentYear) || 1;
+  var html = "";
+  sorted.forEach(function(z){
+    var cases = getZipCases(z,currentYear);
+    var risk  = getRisk(cases);
+    if (activeRisk !== "all" && risk.tier !== activeRisk) return;
+    var pct = Math.round(cases/maxC*100);
+    var sel = (selectedZip && selectedZip.zip===z.zip) ? " sel" : "";
+    html +=
+      '<div class="zi'+sel+'" onclick="selectZipByCode(\''+z.zip+'\')">'+
+      '<div style="display:flex;align-items:center">'+
+      '<div class="zdot" style="background:'+risk.dot+'"></div>'+
+      '<div><div style="font-weight:500;color:var(--text)">'+z.zip+'</div>'+
+      '<div style="font-size:.54rem;color:var(--muted)">'+z.name.substring(0,18)+'</div></div></div>'+
+      '<div class="zright">'+
+      '<div class="zbar"><div class="zfill" style="width:'+pct+'%;background:'+risk.color+'"></div></div>'+
+      '<span class="znum" style="color:'+risk.stroke+'">'+cases.toLocaleString()+'</span>'+
+      '</div></div>';
+  });
+  document.getElementById("zipList").innerHTML =
+    html || '<div style="color:var(--muted);font-size:.63rem;padding:8px">No zones match filter</div>';
+}
+
+// ── CHARTS ────────────────────────────────────────────────────────────────────
+function initCharts() {
+  var hYrs=ML.arima.historical_years, hVals=ML.arima.historical_aamr;
+  var fYrs=ML.arima.forecast_years,   fVals=ML.arima.forecast_aamr;
+  var ciLo=ML.arima.ci_lower,         ciHi=ML.arima.ci_upper;
+  var allYrs=hYrs.concat(fYrs);
+  var labels=allYrs.map(function(y){return y%4===0?String(y):"";});
+  var nH=hYrs.length, nF=fYrs.length;
+
+  arimaChart = new Chart(document.getElementById("arimaChart").getContext("2d"), {
+    type:"line",
+    data:{
+      labels:labels,
+      datasets:[
+        {label:"CI Lower", data:new Array(nH).fill(null).concat(ciLo.slice()), borderColor:"transparent", backgroundColor:"transparent", fill:false, tension:0.4, pointRadius:0, borderWidth:0},
+        {label:"CI Upper (80%)", data:new Array(nH).fill(null).concat(ciHi.slice()), borderColor:"transparent", backgroundColor:"rgba(224,90,43,0.15)", fill:"-1", tension:0.4, pointRadius:0, borderWidth:0},
+        {label:"ARIMA Forecast", data:new Array(nH).fill(null).concat(fVals.slice()), borderColor:"#e05a2b", backgroundColor:"transparent", borderWidth:2, tension:0.4, pointRadius:0, borderDash:[5,3]},
+        {label:"CDC WONDER AAMR", data:hVals.concat(new Array(nF).fill(null)), borderColor:"#f0a33a", backgroundColor:"rgba(240,163,58,0.08)", borderWidth:2.5, fill:"origin", tension:0.3, pointRadius:0}
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{labels:{color:"#4e6580",font:{size:8.5},filter:function(item){return item.datasetIndex===2||item.datasetIndex===3;}}},
+        tooltip:{enabled:true}
+      },
+      scales:{
+        x:{ticks:{color:"#4e6580",font:{family:"DM Mono",size:8},maxTicksLimit:12},grid:{color:"#182030"}},
+        y:{ticks:{color:"#4e6580",font:{family:"DM Mono",size:8},callback:function(v){return v.toFixed(0);}},grid:{color:"#182030"},title:{display:true,text:"AAMR/100K (65+)",color:"#4e6580",font:{size:8}}}
+      }
+    }
+  });
+
+  var popVals  =PROJ_YEARS.map(function(y){return Math.round(getPop(y)/1000);});
+  var scaleVals=PROJ_YEARS.map(function(y){return +getArimaFactor(y).toFixed(2);});
+
+  scalingChart = new Chart(document.getElementById("scalingChart").getContext("2d"), {
+    type:"bar",
+    data:{
+      labels:PROJ_YEARS.map(String),
+      datasets:[
+        {label:"BEBR Pop (K)",data:popVals,backgroundColor:"rgba(74,144,226,.3)",borderColor:"#4a90e2",borderWidth:1,yAxisID:"y"},
+        {label:"ARIMA Rate ×",data:scaleVals,type:"line",borderColor:"#e05a2b",backgroundColor:"transparent",borderWidth:2,pointRadius:3,pointBackgroundColor:"#e05a2b",yAxisID:"y2"}
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:"#4e6580",font:{size:8}}}},
+      scales:{
+        x:{ticks:{color:"#4e6580",font:{family:"DM Mono",size:9}},grid:{color:"#182030"}},
+        y:{ticks:{color:"#4e6580",font:{family:"DM Mono",size:9},callback:function(v){return v+"K";}},grid:{color:"#182030"},position:"left",title:{display:true,text:"Pop (K)",color:"#4e6580",font:{size:8}}},
+        y2:{ticks:{color:"#e05a2b",font:{family:"DM Mono",size:9},callback:function(v){return "×"+v.toFixed(1);}},grid:{display:false},position:"right",title:{display:true,text:"ARIMA ×",color:"#e05a2b",font:{size:8}}}
+      }
+    }
+  });
+
+  var r2init = document.getElementById("r2val");
+  if (r2init) r2init.textContent = ML.ridge_r2.toFixed(2);
+}
+
+// ── MAP INIT ──────────────────────────────────────────────────────────────────
+function initMap() {
+  map = L.map("map", {center:[26.52,-81.95], zoom:10, zoomControl:false, attributionControl:false});
+  L.control.zoom({position:"topleft"}).addTo(map);
+  tileLayer = L.tileLayer(TILES.dark, {maxZoom:19}).addTo(map);
+  map.on("zoomend moveend", function() {
+    if (activeLayer === "kriging") { renderKriging(); }
+  });
+  buildHitMarkers();
+  renderAllLayers();
+}
+
+// ── CONTROLS ──────────────────────────────────────────────────────────────────
+function initControls() {
+  var slider = document.getElementById("yrSlider");
+  slider.addEventListener("input", function() {
+    var val = Math.round(parseInt(this.value,10)/5)*5;
+    val = Math.max(2025, Math.min(2050, val));
+    this.value = val;
+    currentYear = val;
+    var pct = (currentYear-2025)/25*100;
+    this.style.background="linear-gradient(to right,#e05a2b "+pct+"%,#182030 "+pct+"%)";
+    updateStats(); updateAgeBars(); renderAllLayers(); buildHitMarkers();
+    if (selectedZip) selectZip(selectedZip);
+    updateZipList();
+  });
+
+  document.getElementById("layerBtns").addEventListener("click", function(e) {
+    var btn = e.target;
+    if (!btn.dataset || !btn.dataset.layer) return;
+    document.querySelectorAll("#layerBtns .tb").forEach(function(b){b.classList.remove("on");});
+    btn.classList.add("on");
+    activeLayer = btn.dataset.layer;
+    clearArr(krigingMarkers); clearArr(heatMarkers); clearArr(bubbleMarkers); clearArr(choroMarkers);
+    renderAllLayers();
+    var mf2 = document.getElementById("mapFooter");
+    if (mf2) mf2.textContent =
+      activeLayer==="kriging" ? "Kriging surface active — click any zone for details" :
+      activeLayer==="heat"    ? "Heat map active — click any zone for details" :
+      activeLayer==="bubble"  ? "Bubble map active — click any zone for details" :
+      "Choropleth active — click any zone for details";
+  });
+
+  document.getElementById("riskBtns").addEventListener("click", function(e) {
+    var btn = e.target;
+    if (!btn.dataset || !btn.dataset.risk) return;
+    document.querySelectorAll("#riskBtns .tb").forEach(function(b){b.classList.remove("on");});
+    btn.classList.add("on");
+    activeRisk = btn.dataset.risk;
+    renderAllLayers(); updateZipList();
+  });
+
+  var tileMap = {btnDark:"dark",btnStreet:"street",btnSat:"sat"};
+  ["btnDark","btnStreet","btnSat"].forEach(function(id) {
+    document.getElementById(id).addEventListener("click", function() {
+      tileLayer.setUrl(TILES[tileMap[id]]);
+      ["btnDark","btnStreet","btnSat"].forEach(function(b){document.getElementById(b).classList.remove("on");});
+      document.getElementById(id).classList.add("on");
+    });
+  });
+}
+
+
+// ── ACTUAL ML ENGINE ─────────────────────────────────────────────────────────
+// Real in-browser machine learning using TensorFlow.js
+// Sources: CDC WONDER AAMR 1999-2022, ACS ZIP 65+ estimates, BEBR projections
+
+var liveML = {
+  lstmForecasts: null,
+  ridgeBeta: null,
+  ridgeR2: null,
+  livekrigGrid: {},
+  lstmChart: null
+};
+
+function setMLStatus(msg, done) {
+  var el = document.getElementById("mlStatusText");
+  var box = document.getElementById("mlStatus");
+  if (el) el.innerHTML = msg;
+  if (done && box) {
+    box.style.color = "#2ecc71";
+    box.style.background = "rgba(46,204,113,.05)";
+    box.style.borderColor = "rgba(46,204,113,.2)";
+  }
+}
+
+function setMLTag(id, text, ok) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text;
+  el.style.color = ok ? "#2ecc71" : "#e05a2b";
+  el.style.borderColor = ok ? "rgba(46,204,113,.4)" : "rgba(224,90,43,.4)";
+  el.style.background = ok ? "rgba(46,204,113,.08)" : "rgba(224,90,43,.08)";
+}
+
+// MODULE 1: LSTM on CDC WONDER AAMR 1999-2022
+async function trainLSTM() {
+  setMLStatus("&#9654; Training LSTM on CDC WONDER AAMR 1999&#8211;2022&#8230;");
+  var rawY = ML.arima.historical_aamr;
+  var yMin = Math.min.apply(null, rawY), yMax = Math.max.apply(null, rawY);
+  var norm = rawY.map(function(v){ return (v - yMin) / (yMax - yMin); });
+
+  var W = 4, xs = [], ys = [];
+  for (var i = 0; i < norm.length - W; i++) {
+    xs.push(norm.slice(i, i + W));
+    ys.push(norm[i + W]);
+  }
+
+  var xT = tf.tensor3d(xs.map(function(s){ return s.map(function(v){ return [v]; }); }), [xs.length, W, 1]);
+  var yT = tf.tensor2d(ys.map(function(v){ return [v]; }), [ys.length, 1]);
+
+  var model = tf.sequential();
+  model.add(tf.layers.lstm({ units: 24, inputShape: [W, 1], returnSequences: false, kernelInitializer: 'glorotUniform', recurrentInitializer: 'glorotUniform' }));
+  model.add(tf.layers.dense({ units: 12, activation: "relu" }));
+  model.add(tf.layers.dense({ units: 1 }));
+  model.compile({ optimizer: tf.train.adam(0.01), loss: "meanSquaredError" });
+
+  await model.fit(xT, yT, {
+    epochs: 200, batchSize: 8, shuffle: true, verbose: 0,
+    callbacks: {
+      onEpochEnd: function(epoch, logs) {
+        if (epoch % 40 === 0)
+          setMLStatus("&#9654; LSTM epoch " + epoch + "/200 &mdash; loss=" + logs.loss.toFixed(5));
+      }
+    }
+  });
+
+  var seed = norm.slice(-W), forecasts = [];
+  for (var step = 0; step < 28; step++) {
+    var inp = tf.tensor3d([seed.map(function(v){ return [v]; })], [1, W, 1]);
+    var pred = model.predict(inp);
+    var pv = (await pred.data())[0];
+    forecasts.push(pv);
+    seed = seed.slice(1).concat([pv]);
+    pred.dispose(); inp.dispose();
+  }
+
+  var denorm = forecasts.map(function(v){ return v * (yMax - yMin) + yMin; });
+  liveML.lstmForecasts = denorm;
+  xT.dispose(); yT.dispose(); model.dispose();
+  setMLTag("lstmTag", "\u2713 LSTM", true);
+  return denorm;
+}
+
+// MODULE 2: Ridge Regression on ZIP features
+async function trainRidge() {
+  setMLStatus("&#9654; Fitting Ridge regression on ACS ZIP features&#8230;");
+  var coastalZips = {"33924":1,"33957":1,"33921":1,"33931":1,"33956":1,"33908":1,"33914":1,"33904":1};
+  var features = [], labels = [], maxCases = 0;
+  ML.zips.forEach(function(z){ var c = z.cases_by_year["2025"].cases; if (c > maxCases) maxCases = c; });
+  ML.zips.forEach(function(z){
+    var p65 = z.pct65, lp = Math.log(z.pop + 1) / 10, cst = (coastalZips[z.zip] || 0), p65sq = p65 * p65;
+    features.push([p65, lp, cst, p65sq]);
+    labels.push(z.cases_by_year["2025"].cases / (maxCases || 1));
+  });
+
+  var n = features.length, nF = 4, lambda = 0.1;
+  var X = tf.tensor2d(features, [n, nF]);
+  var y = tf.tensor2d(labels.map(function(v){ return [v]; }), [n, 1]);
+  var ones = tf.ones([n, 1]);
+  var Xb = tf.concat([ones, X], 1);
+  var Wv = tf.variable(tf.zeros([nF + 1, 1]));
+  var opt = tf.train.adam(0.05);
+
+  for (var ep = 0; ep < 400; ep++) {
+    opt.minimize(function() {
+      var pred = Xb.matMul(Wv);
+      var mse = tf.losses.meanSquaredError(y, pred);
+      var reg = tf.mul(tf.scalar(lambda), tf.sum(tf.square(Wv)));
+      return mse.add(reg);
+    });
+  }
+
+  var wData = await Wv.data();
+  liveML.ridgeBeta = Array.from(wData);
+
+  var predT = Xb.matMul(Wv), predData = await predT.data();
+  var yMean = labels.reduce(function(s,v){ return s+v; }, 0) / n;
+  var ssTot = labels.reduce(function(s,v){ return s + (v-yMean)*(v-yMean); }, 0);
+  var ssRes = 0;
+  for (var i = 0; i < n; i++) ssRes += (labels[i]-predData[i])*(labels[i]-predData[i]);
+  liveML.ridgeR2 = 1 - ssRes / (ssTot || 1);
+
+  // Apply live weights to risk scores
+  var wArr = liveML.ridgeBeta;
+  ML.zips.forEach(function(z) {
+    var p65 = z.pct65, lp = Math.log(z.pop+1)/10, cst = (coastalZips[z.zip]||0), p65sq = p65*p65;
+    var s = wArr[0] + wArr[1]*p65 + wArr[2]*lp + wArr[3]*cst + wArr[4]*p65sq;
+    z.risk_score = Math.max(0, Math.min(1, s));
+  });
+
+  X.dispose(); y.dispose(); ones.dispose(); Xb.dispose(); Wv.dispose(); predT.dispose();
+  setMLTag("ridgeTag", "\u2713 Ridge R\u00B2="+liveML.ridgeR2.toFixed(2), true);
+  var r2el = document.getElementById("r2val");
+  if (r2el) r2el.textContent = liveML.ridgeR2.toFixed(2);
+}
+
+// MODULE 3: Actual Kriging with exponential variogram
+function computeKrigingGrid(year) {
+  var nugget = 0.005, sill = 0.95, range = 0.18;
+  function evgm(h) { return h < 1e-10 ? 0 : nugget + sill*(1 - Math.exp(-h/range)); }
+  function dist(a,b,c,d) { var da=a-c,db=b-d; return Math.sqrt(da*da+db*db); }
+
+  var pts = ML.zips.map(function(z) {
+    return { lat:z.lat, lng:z.lng, v: Math.min(getZipCases(z,year)/1500, 1) };
+  });
+  var n = pts.length, sz = n+1;
+  var C = [];
+  for (var i=0;i<sz;i++) C.push(new Float64Array(sz));
+  for (var i=0;i<n;i++) {
+    for (var j=0;j<n;j++) C[i][j] = evgm(dist(pts[i].lat,pts[i].lng,pts[j].lat,pts[j].lng));
+    C[i][n] = 1; C[n][i] = 1;
+  }
+
+  function solve(A,b) {
+    var m=b.length, M=A.map(function(r){return Array.from(r);}), x=Array.from(b);
+    for (var col=0;col<m;col++) {
+      var mr=col;
+      for (var r=col+1;r<m;r++) if (Math.abs(M[r][col])>Math.abs(M[mr][col])) mr=r;
+      var tmp=M[col];M[col]=M[mr];M[mr]=tmp; var tv=x[col];x[col]=x[mr];x[mr]=tv;
+      if (Math.abs(M[col][col])<1e-12) continue;
+      for (var r=col+1;r<m;r++) {
+        var f=M[r][col]/M[col][col];
+        for (var c=col;c<m;c++) M[r][c]-=f*M[col][c];
+        x[r]-=f*x[col];
+      }
+    }
+    for (var i=m-1;i>=0;i--) {
+      if (Math.abs(M[i][i])<1e-12){x[i]=0;continue;}
+      for (var j=i+1;j<m;j++) x[i]-=M[i][j]*x[j];
+      x[i]/=M[i][i];
+    }
+    return x;
+  }
+
+  var latMin=26.30,latMax=26.80,lngMin=-82.35,lngMax=-81.55,ng=28;
+  var latStep=(latMax-latMin)/(ng-1), lngStep=(lngMax-lngMin)/(ng-1);
+  var grid=[];
+  for (var gi=0;gi<ng;gi++) {
+    var row=[];
+    for (var gj=0;gj<ng;gj++) {
+      var lat=latMin+gi*latStep, lng=lngMin+gj*lngStep;
+      var rhs=[];
+      for (var k=0;k<n;k++) rhs.push(evgm(dist(lat,lng,pts[k].lat,pts[k].lng)));
+      rhs.push(1);
+      var w=solve(C,rhs);
+      var est=0; for (var k=0;k<n;k++) est+=w[k]*pts[k].v;
+      row.push(Math.max(0,Math.min(1,est)));
+    }
+    grid.push(row);
+  }
+  return grid;
+}
+
+function runKriging() {
+  setMLStatus("&#9654; Running Kriging spatial interpolation (" + ML.zips.length + " control points)&#8230;");
+  PROJ_YEARS.forEach(function(yr) { liveML.livekrigGrid[String(yr)] = computeKrigingGrid(yr); });
+  ML.kriging_grid = liveML.livekrigGrid;
+  setMLTag("krigTag", "\u2713 Kriging", true);
+}
+
+// MODULE 4: Update charts with LSTM
+function updateChartsWithLSTM(lstmForecasts) {
+  if (!lstmForecasts || !arimaChart) return;
+  var nH = ML.arima.historical_years.length, nF = ML.arima.forecast_years.length;
+  arimaChart.data.datasets = arimaChart.data.datasets.filter(function(d){ return d.label !== "LSTM Forecast"; });
+  arimaChart.data.datasets.push({
+    label: "LSTM Forecast", data: new Array(nH).fill(null).concat(lstmForecasts.slice(0,nF)),
+    borderColor: "#26c6c6", backgroundColor: "transparent", borderWidth:2, tension:0.4, pointRadius:0, borderDash:[3,3]
+  });
+  arimaChart.update();
+
+  var ctx = document.getElementById("lstmCompareChart");
+  if (!ctx) return;
+  var allYrs = ML.arima.historical_years.concat(ML.arima.forecast_years);
+  var lbls = allYrs.map(function(y){ return y%5===0?String(y):""; });
+  if (liveML.lstmChart) { liveML.lstmChart.destroy(); liveML.lstmChart = null; }
+  liveML.lstmChart = new Chart(ctx.getContext("2d"), {
+    type:"line",
+    data:{ labels:lbls, datasets:[
+      { label:"CDC WONDER (Historical)", data:ML.arima.historical_aamr.concat(new Array(nF).fill(null)), borderColor:"#f0a33a", backgroundColor:"rgba(240,163,58,.07)", fill:"origin", borderWidth:2.5, tension:0.3, pointRadius:0 },
+      { label:"ARIMA(1,1,0)", data:new Array(nH).fill(null).concat(ML.arima.forecast_aamr.slice()), borderColor:"#e05a2b", backgroundColor:"transparent", borderWidth:2, tension:0.4, pointRadius:0, borderDash:[5,3] },
+      { label:"LSTM Neural Net", data:new Array(nH).fill(null).concat(lstmForecasts.slice(0,nF)), borderColor:"#26c6c6", backgroundColor:"rgba(38,198,198,.06)", borderWidth:2.2, tension:0.4, pointRadius:0 }
+    ]},
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{labels:{color:"#4e6580",font:{size:8.5}}} },
+      scales:{ x:{ticks:{color:"#4e6580",font:{family:"DM Mono",size:8},maxTicksLimit:12},grid:{color:"#182030"}},
+               y:{ticks:{color:"#4e6580",font:{family:"DM Mono",size:8}},grid:{color:"#182030"},title:{display:true,text:"AAMR/100K",color:"#4e6580",font:{size:8}}} }}
+  });
+  var badge = document.getElementById("lstmStatusBadge");
+  if (badge) { badge.textContent = "Live"; badge.style.color = "#26c6c6"; }
+}
+
+// ML PIPELINE
+async function runMLPipeline() {
+  try {
+    try { await tf.setBackend("cpu"); } catch(e) {}
+    await tf.ready();
+    setMLStatus("&#9654; TensorFlow.js ready &mdash; backend: " + tf.getBackend());
+    var lstmF = await trainLSTM();
+    updateChartsWithLSTM(lstmF);
+    await trainRidge();
+    updateZipList(); renderAllLayers();
+    await new Promise(function(r){ setTimeout(function(){ runKriging(); r(); }, 50); });
+    renderAllLayers();
+    var l50 = lstmF[lstmF.length-1], a50 = ML.arima.forecast_aamr[ML.arima.forecast_aamr.length-1];
+    var diff = ((l50-a50)/a50*100).toFixed(1), sign = diff>0?"+":"";
+    var rd = document.getElementById("mlResults");
+    if (rd) {
+      rd.style.display = "block";
+      var rl1 = document.getElementById("mlResLine1");
+      var rl2 = document.getElementById("mlResLine2");
+      var rl3 = document.getElementById("mlResLine3");
+      if (rl1) rl1.innerHTML = "<span style='color:var(--cool)'>LSTM</span> 2050 AAMR: <b style='color:var(--text)'>" + l50.toFixed(1) + "</b>/100K";
+      if (rl2) rl2.innerHTML = "<span style='color:#e05a2b'>ARIMA</span> 2050 AAMR: <b style='color:var(--text)'>" + a50.toFixed(1) + "</b>/100K";
+      if (rl3) rl3.innerHTML = "Deviation: <b style='color:"+(parseFloat(diff)>0?"#e74c3c":"#2ecc71")+"'>" + sign + diff + "%</b>";
+    }
+    setMLStatus("&#10003; All ML modules complete &mdash; live predictions active", true);
+  } catch(err) {
+    console.error("ML error:", err);
+    setMLStatus("&#9888; ML error: " + err.message);
+  }
+}
+
+// ── BOOT ──────────────────────────────────────────────────────────────────────
+document.addEventListener("DOMContentLoaded", function() {
+  try {
+    initMap(); initCharts(); initControls();
+    updateStats(); updateAgeBars(); updateZipList();
+    if (typeof tf !== "undefined") {
+      runMLPipeline();
+    } else {
+      var chk = setInterval(function(){ if (typeof tf!=="undefined"){ clearInterval(chk); runMLPipeline(); } }, 300);
+    }
+  } catch(err) { console.error("Init error:", err); }
+});
+
+}()); // end IIFE
+</script>
+</body>
+</html>
